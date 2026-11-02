@@ -1,6 +1,6 @@
 # Unpack the match data here
 
-This folder is empty on purpose. The match assets are gated — see [DATA.md](../DATA.md) for how to
+This folder is empty on purpose. The match assets are gated — see [DATA.md](https://github.com/metrica-sports/more-than-a-hack-2027/blob/main/DATA.md) in the official challenge repo for how to
 enrol, accept the terms, and get the download link.
 
 Unpack the bundle here, keeping the names it arrives with:

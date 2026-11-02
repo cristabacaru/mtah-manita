@@ -1,28 +1,13 @@
-# MTAH 2027: Ball possession (team Manita)
+# MTAH 2027: Ball possession (team `<team_name>`)
+
+> Replace `<team_name>` everywhere with the exact team name all members gave on the registration
+> form. The scorer names our row on the board after the CSV file name.
 
 This is our entry for More Than A Hack 2027, Phase 1. We label each of the 199,319 frames of the
-BAR–ATH tactical video as `H` / `A` / `D` / `X`. Entries are ranked on **spellF1**. The floor to
+BAR–ATH tactical video (25 fps) as `H` / `A` / `D` / `X`. Entries are ranked on **spellF1**. The floor to
 beat is `baseline_smooth50` at 0.2433.
 
 **Deadline: Nov 17, 2026. We submit on Nov 16.**
-
----
-
-## Ground rules (read these first)
-
-1. **Never commit match data.** `data/*` is in `.gitignore` (only `data/README.md` is tracked).
-   Before you push, run `git ls-files | grep '^data/'`. It must print only `data/README.md`. This
-   repo becomes public at submission, and once data is in the git history, deleting the file does
-   not remove it.
-2. **No match data goes to a cloud LLM** (ChatGPT, Claude, Copilot chat, …). Asking an assistant to
-   write code is fine. Pasting frame-level outputs, positions or labels is not. Share only
-   aggregates: scores, counts and shares.
-3. **Never tune or train on the public 5-minute GT.** It is not in this repo on purpose. We use it
-   once, at freeze (Nov 14), only as a smoke test.
-4. **No hand labels or human-made data about this game.** Labelled data from *other* games is
-   allowed in any amount (Metrica samples, DFL/IDSSE).
-5. **The output must be deterministic.** Fix the seeds, never hard-code frame numbers, and keep
-   every setting in `mtah/config.py`.
 
 ---
 
@@ -40,8 +25,9 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-lock.txt        # exact versions the team uses
 
-# 3. Cache for parsed arrays, kept outside the repo
-export MTAH_CACHE=~/.cache/mtah2027         # add this to your ~/.zshrc
+# 3. Cache folder, outside the repo: parsed tracking + every array our modules produce.
+#    It is derived match data, so it must never sit in the repo. Safe to delete; it is rebuilt.
+export MTAH_CACHE=~/.cache/mtah2027         # add this line to your ~/.zshrc
 ```
 
 **Check that it works:**
@@ -56,40 +42,42 @@ environment are correct.
 
 ## Repository layout: where to build
 
+Items marked *(planned)* do not exist yet. Their owner creates them.
+
 ```
 mtah/                     OUR PIPELINE (all new work goes here)
-├─ config.py              every setting and seed                                P1
-├─ data.py                ATD -> per-half .npy arrays (metres, video frames)     P1
-├─ evaluate.py            score(labels, gt) wrapper, experiments.csv logging     P1
-├─ submit.py              writes <team>.csv (X outside graded halves) + sha256   P1
-├─ external/              DFL/IDSSE + Metrica loaders, same schema as data.py    P2
-├─ simulate.py            ball-dropout / noise simulator for external games      P2
-├─ deadball.py            p_dead[t], restart anchors                             P3
-├─ ball.py                ball-gap bridging (interpolation, RTS smoother)        P4
-├─ features.py, model.py  team-possession features + LightGBM -> p_home[t]      P4
-└─ decode.py              HSMM/Viterbi decoder, boundary snapping                P5
-run.sh                    one command: raw data -> final CSV                     P1
+├─ config.py              every setting and seed                                P1 (planned)
+├─ data.py                ATD -> per-half .npy arrays (metres, video frames)     P1 (planned)
+├─ evaluate.py            score(labels, gt) wrapper, experiments.csv logging     P1 (planned)
+├─ submit.py              writes <team_name>.csv (X outside graded halves) + sha256   P1 (planned)
+├─ external/              DFL/IDSSE + Metrica loaders, same schema as data.py    P2 (planned)
+├─ simulate.py            ball-dropout / noise simulator for external games      P2 (planned)
+├─ deadball.py            p_dead[t], restart anchors                             P3 (planned)
+├─ ball.py                ball-gap bridging (interpolation, RTS smoother)        P4 (planned)
+├─ features.py, model.py  team-possession features + LightGBM -> p_home[t]      P4 (planned)
+└─ decode.py              HSMM/Viterbi decoder, boundary snapping                P5 (planned)
+run.sh                    one command: raw data -> final CSV              P1 (planned)
 experiments.csv           one row per experiment (who, what, external scores)
-docs/TECHNICAL.md         technical doc, one section per owner
+docs/TECHNICAL.md         technical doc, one section per owner (skeleton)
 
 evaluation/               official scorer (copied from the challenge repo, do not edit)
 starter/                  official loaders + baseline (do not edit, import from them)
 games.py                  official game metadata and asset paths (do not edit)
 research/checks/          exploratory scripts behind our verification report
-tools/                    Metrica sample-game converters + GT viewer
-data/                     match data and caches, NEVER committed
+tools/                    Metrica sample-game converters + GT viewer   (to be added)
+data/                     match data only (tactical/, broadcast/, validation/), NEVER committed
 ```
 
 Files from the official repo (`evaluation/`, `starter/`, `games.py`) are MIT licensed. See
 `LICENSE-metrica`. Leave them unchanged so our scores match the official scorer. If you need
 different behaviour, wrap the function in `mtah/`.
 
-### Module contract (agreed on day 1)
+### Module contract (proposal: confirm with the whole team, then remove this note)
 
 Every module works on **per-half arrays indexed by video frame**. External games must have the
 exact same shape and schema as the target game, so every module runs on both unchanged.
 
-| Producer | Output (in `data/cache/<game>/`) | Meaning |
+| Producer | Output (in `$MTAH_CACHE/<game>/`) | Meaning |
 |---|---|---|
 | P3 `deadball.py` | `p_dead.npy`, shape `(n,)`, float in [0, 1] | probability the ball is dead |
 | P3 `deadball.py` | `anchors.json`: list of `{frame, type, team, confidence}` | detected restarts (kickoff, throw-in, corner, goal kick, free kick) |
@@ -103,24 +91,20 @@ As long as these shapes hold, P3, P4 and P5 can work in parallel against stub in
 
 ## Day-to-day usage
 
-### Branches and pull requests
-```bash
-git checkout main && git pull
-git checkout -b <area>/<short-name>      # e.g. deadball/kickoff-detector
-# ... work, commit often ...
-git push -u origin <area>/<short-name>   # then open a pull request on GitHub
-```
-- Never push directly to `main`. Merge through a pull request that another teammate reviews.
-- `main` must always produce a valid submission (`bash run.sh` then `validate_submission.py`).
-
 ### Scoring on external games (our development metric)
 ```bash
 python evaluation/run_evaluation.py \
     --gt data/validation/<game>/<game>_gt.csv \
-    --results <dir with your csv> --bootstrap 1000
+    --results <dir with your csv files> \
+    --out $MTAH_CACHE/reports --bootstrap 1000
 ```
+- Always pass `--gt`. Its default (`public`) looks for the public window GT, which is not in
+  this repo.
+- `--results` scores every CSV in that folder.
+- `--out` keeps `scoreboard.csv` and the reports out of the repo.
+- The external GT files (`data/validation/game{1,2}/`) come from P2's converters in `tools/`.
 Report the **mean spellF1 over all held-out external games and noise levels**, and add a row to
-`experiments.csv`: date, owner, branch, change, spellF1, macroF1, notes. Keep a component only if
+`experiments.csv`: date, owner, change, spellF1, macroF1, notes. Keep a component only if
 it adds more than ~0.02 with no bootstrap overlap.
 
 ### Research checks (aggregates only)
@@ -132,11 +116,19 @@ See `research/checks/README.md` for the full list.
 
 ### Before submitting
 ```bash
-bash run.sh                                           # -> manita.csv
-python evaluation/validate_submission.py manita.csv
-shasum -a 256 manita.csv                              # run twice: hashes must match
+bash run.sh                                           # -> <team_name>.csv
+python evaluation/validate_submission.py <team_name>.csv
+shasum -a 256 <team_name>.csv                         # run twice: hashes must match
 git ls-files | grep '^data/'                          # only data/README.md
 ```
+Submit through the official Google form, one response per team (the last one before the deadline
+counts). You need:
+- the team name;
+- `<team_name>.csv`;
+- the public URL of this repo (switch it to Public first);
+- the technical document as `<team_name>.pdf` or `.md`.
+
+You need a Google account to upload. There is no leaderboard and no feedback before the deadline.
 
 ---
 
