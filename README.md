@@ -136,19 +136,10 @@ You need a Google account to upload. There is no leaderboard and no feedback bef
 
 | Role | Owner |
 |---|---|
-| P1: Platform and submission lead | _tbd_ |
-| P2: External data and simulator | _tbd_ |
-| P3: Dead-ball module | Cristiana |
-| P4: Team-possession model | _tbd_ |
-| P5: Decoder, tuning and error analysis | _tbd_ |
+| P1: Platform and submission lead | Alexia |
+| P2: External data and simulator | Theo |
+| P3: Dead-ball module | Cristiana + Alexia |
+| P4: Team-possession model | Bianca |
+| P5: Decoder, tuning and error analysis | Andra |
 
-## Timeline
 
-| Dates | Milestone |
-|---|---|
-| Nov 1–2 | Skeleton, data layer, scorer wrapper, v0 quick win (golden fallback) |
-| Nov 3–5 | v1 rules pipeline end to end, external validation suite live |
-| Nov 6–10 | v2: LightGBM team and dead-ball models, HSMM, tag-driven costs |
-| Nov 11–13 | Joint tuning on external games, ablations |
-| Nov 14 | **Freeze**, one smoke test on the public window |
-| Nov 15–16 | Determinism check, clean-machine reproduction, technical doc, **submit Nov 16** |
