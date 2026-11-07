@@ -1,16 +1,20 @@
-"""Step 2: ball-gap features (spec section 5, "Gap" bullet, plus edge cases).
+"""Steps 2-3: ball-gap and motion features (spec section 5, "Gap" and "Motion" bullets, fps = 30,
+plus edge cases).
 
     python tests/deadball/test_signals.py
 """
 import copy
 import sys
+import warnings
 
 import numpy as np
 
 from harness import make_game, run_module  # noqa: E402  (puts the repo root on sys.path)
-from mtah.deadball.signals import gap_len_s, t_since_seen_s, t_until_seen_s
+from mtah.deadball.signals import (gap_len_s, speed_abs, speed_missing, speed_rel, t_since_seen_s,
+                                   t_until_seen_s)
 
 FEATURES = (gap_len_s, t_since_seen_s, t_until_seen_s)
+MOTION = (speed_abs, speed_rel, speed_missing)
 INSIDE = np.zeros(1000, bool)
 INSIDE[100:450] = INSIDE[550:900] = True       # make_game halves are inclusive: (100, 449), (550, 899)
 
@@ -105,6 +109,112 @@ def test_input_is_not_modified():
         f(game)
     assert np.array_equal(game["ball_xy"], before["ball_xy"], equal_nan=True)
     assert game["meta"] == before["meta"]
+
+
+
+# --- step 3: motion (spec section 5, "Motion" bullet and "fps = 30") ------------------------------
+
+def _step_game(fps, before_s=20, after_s=20, fast=3.0, slow=0.5):
+    """One half of before_s + after_s seconds: every player at `fast` m/s, then at `slow` m/s."""
+    n = (before_s + after_s) * fps
+    game = make_game(n=n, fps=fps, halves=((0, n - 1),))
+    change = before_s * fps
+    game["players_speed"][:change] = fast
+    game["players_speed"][change:] = slow
+    return game, change
+
+
+def test_spec_step_crosses_midpoint_within_half_s_and_rel_drops():
+    for fps in (25, 30):                                    # spec: "fps = 30 keeps durations in seconds"
+        game, change = _step_game(fps)
+        a, r = speed_abs(game), speed_rel(game)
+        first_below = int(np.flatnonzero(a < 1.75)[0])
+        assert abs(first_below - change) <= 0.5 * fps, (fps, first_below, change)
+        assert r[change + round(0.5 * fps)] < 0.3          # just after: smoothing window fully slow
+        assert r[change + 4 * fps] < 0.3                    # trailing 10 s still mostly fast
+        assert np.isclose(r[change + 6 * fps], 1.0)         # trailing median has turned slow
+
+
+def test_spec_all_players_nan_gives_nan_and_indicator_1():
+    game = make_game()
+    game["players_speed"][:] = np.nan
+    a, r, m = (f(game) for f in MOTION)                     # never an exception
+    assert np.isnan(a).all() and np.isnan(r).all()
+    assert (m[INSIDE] == 1).all() and np.isnan(m[~INSIDE]).all()
+
+
+def test_motion_shape_dtype_and_nan_exactly_outside_halves():
+    game = make_game()
+    for f in MOTION:
+        x = f(game)
+        assert x.shape == (1000,) and x.dtype == np.float64
+        assert np.isnan(x[~INSIDE]).all() and np.isfinite(x[INSIDE]).all()
+    assert (speed_missing(game)[INSIDE] == 0).all()
+
+
+def test_no_smoothing_across_half_time_or_into_outside_frames():
+    # frames outside the halves are 11 m/s: any leak would move the edge values
+    game = make_game()
+    game["players_speed"][:] = 11.0
+    game["players_speed"][100:450] = 3.0
+    game["players_speed"][550:900] = 0.5
+    a, r = speed_abs(game), speed_rel(game)
+    assert np.allclose(a[100:450], 3.0) and np.allclose(a[550:900], 0.5)
+    assert np.allclose(r[INSIDE], 1.0)                     # half 2 does not divide by half 1's speed
+
+
+def test_frame_mean_skips_nan_players():
+    # decision (d): one tracked player is enough; NaN players are left out of the frame mean
+    game = make_game()
+    game["players_speed"][:] = [1.0, 2.0, 3.0, np.nan]
+    game["players_speed"][300] = [np.nan, np.nan, np.nan, 4.0]
+    a = speed_abs(game)
+    assert np.allclose(a[100:280], 2.0) and np.isfinite(a[INSIDE]).all()
+
+
+def test_nan_frames_inside_window_are_skipped():
+    # decision (c): NaN only where the whole +/- 12-frame window is NaN (25 fps, 0.5 s)
+    game = make_game()
+    game["players_speed"][:] = 2.0
+    game["players_speed"][200:261] = np.nan                # 61 frames with nobody tracked
+    a, r, m = (f(game) for f in MOTION)
+    nan_expected = np.zeros(1000, bool); nan_expected[212:249] = True
+    assert np.array_equal(np.isnan(a) & INSIDE, nan_expected)
+    assert np.array_equal(np.isnan(r) & INSIDE, nan_expected)   # speed_rel defined where speed_abs is
+    assert np.array_equal(m[INSIDE] == 1, nan_expected[INSIDE])
+    assert np.allclose(a[200:212], 2.0) and np.allclose(r[200:212], 1.0)
+
+
+def test_rel_floor_and_start_of_half():
+    # decisions (b) and (f): at the first frame the window is t alone, so speed_rel = 1;
+    # REL_FLOOR (0.1 m/s) keeps a standing team finite: 0 -> 0, 0.05 -> 0.5
+    game = make_game()
+    game["players_speed"][:] = 0.05
+    game["players_speed"][550:900] = 0.0
+    r = speed_rel(game)
+    assert np.allclose(r[100:450], 0.5) and np.all(r[550:900] == 0.0)
+    game["players_speed"][:] = 2.0
+    assert speed_rel(game)[100] == 1.0 and speed_rel(game)[550] == 1.0
+
+
+def test_motion_raises_no_numpy_warning():
+    game = make_game()
+    game["players_speed"][550:900] = np.nan                # a half with nobody tracked
+    game["players_speed"][200:261] = np.nan
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for f in MOTION:
+            f(game)
+
+
+def test_motion_accepts_float32_and_does_not_modify_input():
+    game = make_game()
+    game["players_speed"] = game["players_speed"].astype(np.float32)   # as stored (mtah/data.py:130)
+    before = copy.deepcopy(game)
+    for f in MOTION:
+        assert f(game).dtype == np.float64
+    assert np.array_equal(game["players_speed"], before["players_speed"], equal_nan=True)
+    assert game["players_speed"].dtype == np.float32 and game["meta"] == before["meta"]
 
 
 if __name__ == "__main__":

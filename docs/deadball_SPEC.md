@@ -3,7 +3,7 @@
 **In one sentence:** for every frame, give the probability that the ball is dead (`D`), using tracking
 only, so that the decoder (P5) can place the stoppages that separate possessions.
 
-Scope: `p_dead` only; restarts, anchors and tags belong to P3b (`README.md:90-91,97`). Decisions agreed
+Scope: `p_dead` only; restarts, anchors and tags belong to P3b (`README.md:87-88,92-94`). Decisions agreed
 2026-11-07. Sources are `file:line`; **[unverified]** marks claims not yet checked; **[choice]** marks a
 team choice with no external source.
 
@@ -11,7 +11,7 @@ team choice with no external source.
 
 | # | Decision | Reason |
 |---|---|---|
-| 1 | `p_dead` never snaps boundaries. The decoder alone places D edges, using anchors and tags as costs. | One owner per edge; `p_dead` stays measurable without anchors (`README.md:95-96`). |
+| 1 | `p_dead` never snaps boundaries. The decoder alone places D edges, using anchors and tags as costs. | One owner per edge; `p_dead` stays measurable without anchors (`README.md:92-93`). |
 | 2 | Combiner = logistic regression, clipped to [ε, 1−ε]. No isotonic step. | P5 multiplies log-probs by one `emission_scale` (`mtah/optuna_tune.py:38,45`), which rescales log-odds. An exact 0 or 1 becomes −∞ in the Viterbi sum (`mtah/decode.py:60`). |
 | 3 | Motion = absolute speed **and** speed relative to a trailing window. | Speed has no natural break on BAR–ATH (bimodality 0.515 < 0.555, `c3_dead_ball.py` output); tempo differs between leagues. |
 | 4 | Continuous features, no hard "≥ 3 s" or "past line by X m" rules. | The combiner learns the cut-offs; 7.9 % of graded frames are ball-missing but fast (c3 output). |
@@ -29,7 +29,7 @@ team choice with no external source.
 - `meta`: `pitch (L,W)`, `fps`, `halves [(first,last)]` (inclusive).
 
 Rules on the input:
-- Only per-frame team aggregates are used (guide `:154-156`).
+- Only per-frame team aggregates are used (guide `:185-187`).
 - Every feature is computed inside one half.
 - "H attacks towards +x" is now a P1 decision (guide §5). No `p_dead` feature depends on it: line features are unchanged under the flip (scratch check, max difference 7e-15).
 - `players_speed` is computed by P1's loader from positions (±0.2 s centred difference), never the provider column (guide §5). On BAR–ATH, "slow" (< 1.5 m/s) is 50.8 % of graded frames with it, against 49.0 % with the column (c8 output); c3 figures quoted here use the column.
@@ -44,7 +44,7 @@ Rules on the input:
 | `deadball_features.npz` | `X (n,k)` float64, `names (k,)` str | the features of §3, for P5's error analysis |
 | `camera_step.npy` (BAR–ATH only) | `(n,)` float64, metres | camera-aim movement per frame, NaN where the homography is invalid (`common.py:133-143`) |
 
-**P3b formats.** Current proposals (`README.md:90-91`); Alexia owns them and `p_dead` reads neither. See §6.
+**P3b formats.** Current proposals (`README.md:87-88`); Alexia owns them and `p_dead` reads neither. See §6.
 - `anchors.json`: `[{"frame": int, "type": str, "team": "H"|"A", "confidence": float}]`, type ∈ kickoff, throw-in, corner, goal kick, free kick (exact strings and confidence range: Alexia)
 - `tags.json`: `[{"start_frame": int, "end_frame": int, "type": str, "team": "H"|"A"}]`
 
@@ -60,20 +60,28 @@ without letting the longest gaps dominate the fit.
 | `t_since_seen_s`, `t_until_seen_s` | log(1 + s) since / until the ball was last / next seen (edges matter most) | `ball_xy`, `fps` | none |
 | `last_line_dist_m`, `next_line_dist_m` | ball last / next seen near a line → went out or restart | `ball_xy`, `pitch` | none |
 | `ball_out_m` | visible ball past a line: max(0, distance outside) | `ball_xy`, `pitch` | `OUT_CAP_M` (5) |
-| `speed_abs` | team motion collapse: centred mean of mean player speed | `players_speed`, `fps` | `SPEED_SMOOTH_HALF_S` (0.5) |
-| `speed_rel` | `speed_abs` / median over trailing window | `players_speed`, `fps` | `REL_WIN_S` (10), `REL_FLOOR` (0.1 m/s) |
-| `*_missing` | indicator where an input is NaN (feature then = training median) | all | none |
+| `speed_abs` | team motion collapse: per frame, mean `players_speed` over tracked players of both teams; then a centred mean over ± round(`SPEED_SMOOTH_HALF_S` × fps) frames | `players_speed`, `fps` | `SPEED_SMOOTH_HALF_S` (0.5) |
+| `speed_rel` | `speed_abs` / max(`REL_FLOOR`, median of `speed_abs` over the trailing round(`REL_WIN_S` × fps) frames, t included) | `players_speed`, `fps` | `REL_WIN_S` (10), `REL_FLOOR` (0.1 m/s) |
+| `*_missing` | 1 where the feature is NaN inside a half, else 0 (`speed_missing` covers `speed_abs` and `speed_rel`). `signals.py` leaves the feature NaN; the combiner fills it with the training median | all | none |
+
+**Motion details** (decided 2026-11-07, all **[choice]**; one rule for every game):
+- Windows in frames: round(seconds × fps) with Python `round` (25 fps: ± 12 frames for smoothing, i.e. 1.0 s, and 250 frames trailing; 30 fps: ± 15 and 300).
+- Every window stops at the half edge and shrinks there, never NaN because of the edge. This matches the gap rule (an edge counts as a boundary) and c3's `rolling_mean` (`research/checks/common.py:120-131`).
+- At the start of a half the trailing window holds whatever history the half has (at the first frame, only t itself, so `speed_rel` = 1 unless the floor applies).
+- NaN frames inside a window are skipped; the result is NaN only if every frame of the window is NaN. The trailing window includes t, so `speed_rel` is defined exactly where `speed_abs` is.
+- A frame's mean speed needs at least one tracked player with a speed; no minimum count.
+- `players_speed` is read as float64 (it is stored as float32, `mtah/data.py:130`). No numpy all-NaN warnings: empty frames and empty windows are handled before any `nanmedian` call.
 
 Evidence on BAR–ATH (aggregates only):
 - Long gaps start within 2 m of a line 36 % of the time, against 9.1 % for a visible ball at random (c1 output).
 - Median speed is 1.04 m/s in gaps of 3 s or more, against 2.00 m/s with the ball visible (c3 output).
 
 **Combiner** (`combine.py`):
-- Standardised features → logistic regression with L2, fitted by `scipy.optimize.minimize(method="L-BFGS-B")`. scipy 1.18.1 is pinned (`requirements-lock.txt:99`); scikit-learn is not installed (checked in `.venv`).
+- Standardised features → logistic regression with L2, fitted by `scipy.optimize.minimize(method="L-BFGS-B")`. scipy 1.18.1 is pinned (`requirements-lock.txt:103`); scikit-learn is not installed (checked in `.venv`).
 - Parameters: `L2` (1.0), `EPS` (1e-3), `TRAIN_GAMES` (all in `data/validation/`).
 - Rows: graded frames of degraded external games. Label = provider D flag (DFL `BallStatus`; Metrica GT `D`).
-- Fitting is leave-one-match-out (guide `:170`).
-- **v0 stub** until external games exist: `p_dead = clip(gap length ≥ 3 s)`, on the raw length (`STUB_GAP_S`), not on the log `gap_len_s` (`README.md:98-99`).
+- Fitting is leave-one-match-out (guide `:201`).
+- **v0 stub** until external games exist: `p_dead = clip(gap length ≥ 3 s)`, on the raw length (`STUB_GAP_S`), not on the log `gap_len_s` (`README.md:96-97`).
 
 ## 4. Evaluation (`mtah/deadball/evaluate.py`) and "done when"
 
@@ -84,7 +92,7 @@ Run per external game × 3 noise levels and per half. Hard call: `p_dead > 0.5`.
 - **Calibration**: expected calibration error, 10 equal-width bins weighted by frame count, over graded frames.
 - **Ablation**: drop one feature group at a time (gap / line / motion).
 
-Report the mean over games × noise levels and log a row in `experiments.csv` (guide `:173-174`). Once P5's decoder exists, re-score through it with `run_evaluation.py`.
+Report the mean over games × noise levels and log a row in `experiments.csv` (guide `:204-205`). Once P5's decoder exists, re-score through it with `run_evaluation.py`.
 
 | Piece | Done when | Command (modules planned) |
 |---|---|---|
@@ -92,7 +100,7 @@ Report the mean over games × noise levels and log a row in `experiments.csv` (g
 | `combine.py` | two runs give the same sha256 of `p_dead.npy`; nothing outside [ε, 1−ε] inside halves | `python -m mtah.deadball.combine --game <g>` twice, then `shasum -a 256 $MTAH_CACHE/<g>/p_dead.npy` |
 | `evaluate.py` | GT scored against itself: F1s = 1.0, offsets = 0, synthetic shifts recovered | `python -m mtah.deadball.evaluate --self-test <g>` |
 | calibration | mean ECE < 0.05 **[choice]** | `python -m mtah.deadball.evaluate --all` |
-| module | beats the v0 stub on mean `alive_dead_f1` and D-interval F1 by > 0.02, no bootstrap overlap (guide `:171-172`) | `python -m mtah.deadball.evaluate --all --bootstrap 1000` |
+| module | beats the v0 stub on mean `alive_dead_f1` and D-interval F1 by > 0.02, no bootstrap overlap (guide `:202-203`) | `python -m mtah.deadball.evaluate --all --bootstrap 1000` |
 
 ## 5. Synthetic tests (no ground truth needed)
 
