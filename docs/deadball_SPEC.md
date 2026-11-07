@@ -73,7 +73,7 @@ Evidence on BAR–ATH (aggregates only):
 - Parameters: `L2` (1.0), `EPS` (1e-3), `TRAIN_GAMES` (all in `data/validation/`).
 - Rows: graded frames of degraded external games. Label = provider D flag (DFL `BallStatus`; Metrica GT `D`).
 - Fitting is leave-one-match-out (guide `:170`).
-- **v0 stub** until external games exist: `p_dead = clip(gap_len_s ≥ 3)` (`README.md:98-99`).
+- **v0 stub** until external games exist: `p_dead = clip(gap length ≥ 3 s)`, on the raw length (`STUB_GAP_S`), not on the log `gap_len_s` (`README.md:98-99`).
 
 ## 4. Evaluation (`mtah/deadball/evaluate.py`) and "done when"
 
