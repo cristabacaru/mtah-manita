@@ -49,6 +49,15 @@ N_GRADED = sum(last - first + 1 for _, first, last in HALF_BLOCKS)
 # (starter/load_atd.py): video_frame = atd_frame_id - ATD_FRAME_ID_START.
 ATD_FRAME_ID_START = 1
 
+# -- data layer (mtah/data.py, guide section 5) --------------------------------------------------
+# players_speed = |xy(t+k) - xy(t-k)| / 2k frames, k = round(SPEED_HALF_WINDOW_S * fps).
+# 0.2 s: research/checks/c8_speed.py shows it matches the ATD speed column (median ratio 0.995).
+SPEED_HALF_WINDOW_S = 0.2
+# Speeds above this are set to NaN: a slot handed to another person (slots are not people, guide 5)
+# shows up as a jump, up to 99.5 m/s on BAR-ATH. 12 m/s is a physical limit (fastest human sprint
+# about 12.4 m/s), not a property of one game; the ATD's own speed column never exceeds 9.43.
+SPEED_MAX_MPS = 12.0
+
 # -- labels (guide section 1) ------------------------------------------------------------------
 LABELS = ("H", "A", "D", "X")   # X only outside the halves: on a graded frame it is a miss
 

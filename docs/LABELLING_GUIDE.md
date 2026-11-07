@@ -140,7 +140,7 @@ contains a number specific to one game.
 |---|---|---|---|
 | `ball_xy` | `(n, 2)` float, metres | `NaN` when missing, never 0 or −1 | gaps are a signal; a fake 0 is a ball at the corner flag |
 | `players_xy` | `(n, P, 2)` float, metres | one column per slot or player ID, `NaN` when absent | |
-| `players_speed` | `(n, P)` float, m/s | **[decision, P1]** computed from `players_xy` for every game: \|xy(t+k) − xy(t−k)\| / 2k frames, k = round(0.2 s × fps); `NaN` where either end is missing. Never the provider's speed column. | one formula on every game (see below) |
+| `players_speed` | `(n, P)` float, m/s | **[decision, P1]** computed from `players_xy` for every game: \|xy(t+k) − xy(t−k)\| / 2k frames, k = round(0.2 s × fps); `NaN` where the slot is empty, where either end is missing, and **above 12 m/s**. Never the provider's speed column. | one formula on every game (see below) |
 | `players_team` | `(P,)` of `"H"`/`"A"` | from that game's metadata | |
 | `meta["pitch"]` | `(L, W)` metres | from metadata (BAR–ATH: `games.py:62`, 105.3 × 68.0) | line positions are derived from it |
 | `meta["fps"]` | int | from metadata | durations in seconds stay correct |
@@ -163,10 +163,20 @@ The sources disagree, so one formula keeps speed features comparable across game
 - BAR–ATH: the ATD speed column is m/s and matches position speed (median ratio 0.995, correlation
   0.93, median difference 0.11 m/s per player-frame; graded frames under 1.5 m/s: 49.0% column vs
   50.8% positions), but 9.8% of tracked cells have no speed value. Position speed covers 99.6% of
-  tracked graded cells against 92.0% for the column (c8).
+  tracked graded cells against 92.0% for the column (c8). The XML labels that column `kph`
+  (`BAR-ATH_tactical_atd.xml:1131-1136`), but its values are m/s: they match position speed at ratio
+  ≈ 1, not 3.6, and the maximum is 9.43.
 - DFL / IDSSE: kloppy reads `S` with `float(data.get("S", 0))`, so a missing speed becomes **0**, i.e.
   "standing still" (kloppy 3.18.0 `sportec/deserializer.py:415`). **[unverified]** the unit of `S`.
 - Metrica CSV: kloppy sets no speed at all (`metrica_csv.py:113-121`).
+
+**[decision, P1, 2026-11-07] Speeds above 12 m/s are set to `NaN`** (`config.SPEED_MAX_MPS`).
+Columns are tracker slots, so a slot handed to another person shows up as a jump: on BAR–ATH,
+position speed reaches 99.5 m/s and 0.048% of graded player-frames with a speed exceed 12 m/s, while
+the provider's own column never exceeds 9.43. One such spike lifts a 22-player frame mean by about
+4.5 m/s, which hides exactly the motion collapse `p_dead` looks for. 12 m/s is a physical limit
+(fastest human sprint ≈ 12.4 m/s), not a property of one game, so it applies to every game.
+Positions are kept; only the speed is dropped.
 
 **[decision, P1] Storage:** one folder per game, `$MTAH_CACHE/<game>/`, one `.npy` per key above
 (`ball_xy.npy`, `players_xy.npy`, `players_speed.npy`, `players_team.npy`) plus `meta.json`
