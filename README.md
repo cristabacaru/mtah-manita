@@ -43,8 +43,8 @@ Items marked *(planned)* do not exist yet. Their owner creates them.
 
 ```
 mtah/                     OUR PIPELINE (all new work goes here)
-├─ config.py              every setting and seed                                P1 (planned)
-├─ data.py                ATD -> per-half .npy arrays (metres, video frames)     P1 (planned)
+├─ config.py              every setting and seed                                P1
+├─ data.py                ATD -> shared-schema .npy arrays (guide section 5)     P1
 ├─ evaluate.py            score(labels, gt) wrapper, experiments.csv logging     P1 (planned)
 ├─ submit.py              writes Manita.csv (X outside graded halves) + sha256   P1 (planned)
 ├─ external/              DFL/IDSSE + Metrica loaders, same schema as data.py    P2 (planned)
@@ -52,7 +52,7 @@ mtah/                     OUR PIPELINE (all new work goes here)
 ├─ deadball/              dead-ball module                                       P3
 │  ├─ signals.py          ball-gap + motion-collapse signals (all frames)        P3a Cristiana (planned)
 │  ├─ lines.py            ball distance past / to the touchline and goal line    P3a Cristiana (planned)
-│  ├─ combine.py          all evidence -> final p_dead[t]                        P3a Cristiana (planned)
+│  ├─ combine.py          all evidence -> final p_dead[t] (v0 placeholder today)  P3a Cristiana
 │  ├─ evaluate.py         D-interval F1 + boundary offset on external games      P3a Cristiana (planned)
 │  ├─ tags.py             Smart Tagging -> tags.json (frames, type, H/A team)    P3b Alexia (planned)
 │  └─ restarts.py         kick-off + restart detection, restart team -> anchors  P3b Alexia (planned)
@@ -60,7 +60,7 @@ mtah/                     OUR PIPELINE (all new work goes here)
 ├─ features.py, model.py  team-possession features + LightGBM -> p_home[t]      P4 (planned)
 ├─ decode.py              HSMM/Viterbi decoder, boundary snapping                P5
 └─ optuna_tune.py         decoder tuning scaffold                                P5
-run.sh                    one command: raw data -> final CSV              P1 (planned)
+run.sh                    one command: raw data -> Manita.csv (see "Running the pipeline")  P1
 experiments.csv           one row per experiment (who, what, external scores)
 docs/TECHNICAL.md         technical doc, one section per owner (skeleton)
 
@@ -95,6 +95,31 @@ the `anchors.json` and `tags.json` formats; `docs/deadball_SPEC.md` covers `p_de
 
 As long as these shapes hold, P3, P4 and P5 can work in parallel against stub inputs (e.g.
 `p_dead` = ball-missing-for-3-s mask, `p_home` = nearest-team baseline).
+
+---
+
+## Running the pipeline
+
+```bash
+bash run.sh --check          # each stage, its owner, written or not, outputs present or not
+bash run.sh                  # run every stage in order -> Manita.csv
+bash run.sh --from p_home    # restart from one stage (earlier outputs must be in the cache)
+bash run.sh --fresh          # also rebuild the tracking cache
+```
+
+Stages, in order: `data` → `p_dead` → `p_home` → `tags` → `restarts` → `labels` → `submit`.
+`run.sh` stops at the first stage that fails or is not written yet, and says which and whose.
+Logs go to `$MTAH_CACHE/logs/`.
+
+**To plug your stage in**, your module must:
+1. run as `python -m <module> --game <game>` (the file has an `if __name__ == "__main__":` block);
+2. read its inputs with `mtah.data.load(game)` and the other stages' files in `$MTAH_CACHE/<game>/`;
+3. write the outputs listed in the module contract above, every run (run.sh stops on a missing or
+   stale output);
+4. be deterministic (seeds from `mtah/config.py`).
+
+The stage list (module name, arguments, outputs) is at the top of `run.sh`. If your module name
+or outputs differ, change that one line in the same commit.
 
 ---
 
