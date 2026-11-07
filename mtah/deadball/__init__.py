@@ -10,7 +10,7 @@ P3a (Cristiana), p_dead from tracking only:
 Tests (synthetic, no match data) live next to the team's in tests/deadball/:
     python tests/deadball/run_all.py
 
-P3b (Alexia): tags.py, restarts.py (planned).
+P3b (Alexia): tags.py (Smart Tagging -> tags.json), restarts.py (planned).
 
 Every function takes one game in the shared schema (guide section 5), as returned by
 mtah.data.load(game), and works on any game: fps, pitch and halves come from game["meta"].

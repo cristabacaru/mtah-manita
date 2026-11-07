@@ -54,7 +54,7 @@ mtah/                     OUR PIPELINE (all new work goes here)
 │  ├─ lines.py            ball distance past / to the touchline and goal line    P3a Cristiana (planned)
 │  ├─ combine.py          all evidence -> final p_dead[t] (v0 placeholder today)  P3a Cristiana
 │  ├─ evaluate.py         D-interval F1 + boundary offset on external games      P3a Cristiana (planned)
-│  ├─ tags.py             Smart Tagging -> tags.json (frames, type, H/A team)    P3b Alexia (planned)
+│  ├─ tags.py             Smart Tagging -> tags.json (frames, type, H/A team)    P3b Alexia
 │  └─ restarts.py         kick-off + restart detection, restart team -> anchors  P3b Alexia (planned)
 ├─ ball.py                ball-gap bridging (interpolation, RTS smoother)        P4 (planned)
 ├─ features.py, model.py  team-possession features + LightGBM -> p_home[t]      P4 (planned)
@@ -85,7 +85,7 @@ exact same shape and schema as the target game, so every module runs on both unc
 |---|---|---|---|
 | P3a `deadball/combine.py` | `p_dead.npy`, shape `(n,)`, float in [0, 1] | probability the ball is dead | P5 |
 | P3b `deadball/restarts.py` | `anchors.json`: list of `{frame, type, team, confidence}` | detected restarts (kickoff, throw-in, corner, goal kick, free kick) | P5 |
-| P3b `deadball/tags.py` | `tags.json`: list of `{start_frame, end_frame, type, team}` | Smart Tagging phases on video frames, team as `H`/`A` | P5 |
+| P3b `deadball/tags.py` | `tags.json`: list of `{start_frame, end_frame, code, type, team, possession_team, half}`, end exclusive | every Smart Tagging instance on video frames, team as `H`/`A`/null (BAR–ATH only; format in `mtah/deadball/tags.py`) | P5 |
 | P4 `model.py` | `p_home.npy`, shape `(n,)`, float in [0, 1] | P(home in possession \| ball alive) | P5 |
 | P5 `decode.py` | `labels.npy`, shape `(n,)`, values `H`/`A`/`D` | final labels | `submit.py` |
 

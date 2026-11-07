@@ -126,7 +126,15 @@ class DEADBALL:
 # P3b Smart Tagging and restart anchors (Alexia)
 # =================================================================================================
 class RESTARTS:
-    pass
+    # tags.py: Smart Tagging codes whose Team tag names the DEFENDING side, so possession_team is
+    # the other team. A fixed rule from the code names (decision 2026-11-07), not fitted; c4 agrees:
+    # these four match the nearest-player team on 9-33% of tags, BUILD UP on 91%.
+    TAG_DEFENDING_CODES = (
+        "DEFENDING IN ATTACKING THIRD",
+        "DEFENDING IN MIDDLE THIRD",
+        "DEFENDING IN DEFENSIVE THIRD",
+        "DEFENSIVE TRANSITION",
+    )
 
 
 # =================================================================================================
