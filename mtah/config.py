@@ -61,8 +61,9 @@ VALIDATION_DIR = DATA_DIR / "validation"            # external GT: <game>/<game>
 # -- cache: everything computed from match data (never committed) -------------------------------
 CACHE_DIR = Path(os.environ.get("MTAH_CACHE") or Path.home() / ".cache" / "mtah2027").expanduser()
 REPORTS_DIR = CACHE_DIR / "reports"                 # run_evaluation.py --out
-SUBMISSION_DIR = CACHE_DIR / "submission"
-SUBMISSION_CSV = SUBMISSION_DIR / f"{TEAM_NAME}.csv"
+
+# -- submission: repo root, as README "Before submitting" expects; ignored by .gitignore ----------
+SUBMISSION_CSV = REPO_ROOT / f"{TEAM_NAME}.csv"
 
 
 def game_cache(game: str = GAME) -> Path:

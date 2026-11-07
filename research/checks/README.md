@@ -16,6 +16,7 @@ percentiles): no frame-level values, labels or positions. None of them reads the
 | `c5_restarts.py` | 5. kick-off detector and restart templates |
 | `c6_hygiene.py` | 6. team slots, ends, duplicates, identity jumps |
 | `c7_broadcast.py` | 7. broadcast-to-tactical alignment without video, and broadcast ball fill rate |
+| `c8_speed.py` | 8. ATD speed column vs speed from positions (units, agreement, coverage) |
 
 The first run parses both ATD text files into `$MTAH_CACHE` (defaults to `~/.cache/mtah2027`).
 Never point the cache inside `data/` or the repo.

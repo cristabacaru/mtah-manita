@@ -139,17 +139,38 @@ contains a number specific to one game.
 | Key | Shape / type | Rule | Why |
 |---|---|---|---|
 | `ball_xy` | `(n, 2)` float, metres | `NaN` when missing, never 0 or −1 | gaps are a signal; a fake 0 is a ball at the corner flag |
-| `players_xy`, `players_speed` | `(n, P, 2)`, `(n, P)` | one column per slot or player ID, `NaN` when absent | |
+| `players_xy` | `(n, P, 2)` float, metres | one column per slot or player ID, `NaN` when absent | |
+| `players_speed` | `(n, P)` float, m/s | **[decision, P1]** computed from `players_xy` for every game: \|xy(t+k) − xy(t−k)\| / 2k frames, k = round(0.2 s × fps); `NaN` where either end is missing. Never the provider's speed column. | one formula on every game (see below) |
 | `players_team` | `(P,)` of `"H"`/`"A"` | from that game's metadata | |
 | `meta["pitch"]` | `(L, W)` metres | from metadata (BAR–ATH: `games.py:62`, 105.3 × 68.0) | line positions are derived from it |
 | `meta["fps"]` | int | from metadata | durations in seconds stay correct |
 | `meta["halves"]` | `[(first, last), ...]` frames, **inclusive** | BAR–ATH: `games.half_video_blocks()`; external: kloppy periods | modules work per half, never across half-time. The scorer uses half-open runs (`possession_metrics.py:259-271`). |
 | frame index | `i` = frame `i` of that recording | BAR–ATH: the video frame = submission row | no off-by-offset errors |
 
-**[proposal, P1 + P2]** **H always attacks towards x = L**, in every half and every game.
-- External games: `dataset.transform(to_orientation=Orientation.STATIC_HOME_AWAY)` in kloppy.
-- BAR–ATH: flip x and y in the half where H attacks the other way. Barcelona attacks `left_to_right` in
-  half 1 (`BAR-ATH_tactical_atd.xml:85-86`); c6 confirms the swap at half-time.
+**[decision, P1, 2026-11-07; P2 applies it in `mtah/external/`]** **H always attacks towards x = L**,
+in every half and every game.
+- External games: `dataset.transform(to_orientation=Orientation.STATIC_HOME_AWAY)` in kloppy ("the home
+  team plays from left to right in both periods", kloppy 3.18.0 `domain/models/common.py:386`).
+  **[unverified]** which way y points after the transform depends on the coordinate system passed;
+  P2 checks it against BAR–ATH (y = 0 on the same touchline).
+- BAR–ATH: in each half where H attacks right to left, x → L − x and y → W − y (a 180° rotation, so
+  left/right of the attacking team is kept). Direction read from the metadata, never a frame number:
+  Barcelona (H) `attack_direction_first_half = left_to_right` (`BAR-ATH_tactical_atd.xml:85-86`),
+  Athletic `right_to_left` (`:94-95`); c6 confirms the swap at half-time.
+
+**[decision, P1, 2026-11-07] Speed is computed from positions, never taken from the provider.**
+The sources disagree, so one formula keeps speed features comparable across games:
+- BAR–ATH: the ATD speed column is m/s and matches position speed (median ratio 0.995, correlation
+  0.93, median difference 0.11 m/s per player-frame; graded frames under 1.5 m/s: 49.0% column vs
+  50.8% positions), but 9.8% of tracked cells have no speed value. Position speed covers 99.6% of
+  tracked graded cells against 92.0% for the column (c8).
+- DFL / IDSSE: kloppy reads `S` with `float(data.get("S", 0))`, so a missing speed becomes **0**, i.e.
+  "standing still" (kloppy 3.18.0 `sportec/deserializer.py:415`). **[unverified]** the unit of `S`.
+- Metrica CSV: kloppy sets no speed at all (`metrica_csv.py:113-121`).
+
+**[decision, P1] Storage:** one folder per game, `$MTAH_CACHE/<game>/`, one `.npy` per key above
+(`ball_xy.npy`, `players_xy.npy`, `players_speed.npy`, `players_team.npy`) plus `meta.json`
+(`pitch`, `fps`, `halves`, `n_frames`). Read it back with `mtah.data.load(game)`.
 
 **[fact]** BAR–ATH columns are tracker slots, not people (24 home + 22 away; median tracklet 35.5 s;
 c6). Modules use **per-frame team aggregates only**: mean speed, nearest player of each team, counts
