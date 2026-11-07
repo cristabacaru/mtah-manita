@@ -58,8 +58,8 @@ without letting the longest gaps dominate the fit.
 |---|---|---|---|
 | `gap_len_s` | log(1 + length in s) of the ball-missing run containing t (0 if visible) | `ball_xy`, `fps` | none |
 | `t_since_seen_s`, `t_until_seen_s` | log(1 + s) since / until the ball was last / next seen (edges matter most) | `ball_xy`, `fps` | none |
-| `last_line_dist_m`, `next_line_dist_m` | ball last / next seen near a line → went out or restart | `ball_xy`, `pitch` | none |
-| `ball_out_m` | visible ball past a line: max(0, distance outside) | `ball_xy`, `pitch` | `OUT_CAP_M` (5) |
+| `last_line_dist_m`, `next_line_dist_m` | ball last / next seen near a line → went out or restart: in a gap, max(0, min(x, L−x, y, W−y)) of the last / next sighting (0 on or past a line); where visible, of the current ball | `ball_xy`, `pitch` | none |
+| `ball_out_m` | visible ball past a line: min(`OUT_CAP_M`, hypot(dx, dy)), dx = max(0, −x, x−L), dy = max(0, −y, y−W); NaN while the ball is missing | `ball_xy`, `pitch` | `OUT_CAP_M` (5) |
 | `speed_abs` | team motion collapse: per frame, mean `players_speed` over tracked players of both teams; then a centred mean over ± round(`SPEED_SMOOTH_HALF_S` × fps) frames | `players_speed`, `fps` | `SPEED_SMOOTH_HALF_S` (0.5) |
 | `speed_rel` | `speed_abs` / max(`REL_FLOOR`, median of `speed_abs` over the trailing round(`REL_WIN_S` × fps) frames, t included) | `players_speed`, `fps` | `REL_WIN_S` (10), `REL_FLOOR` (0.1 m/s) |
 | `*_missing` | 1 where the feature is NaN inside a half, else 0 (`speed_missing` covers `speed_abs` and `speed_rel`). `signals.py` leaves the feature NaN; the combiner fills it with the training median | all | none |
@@ -71,6 +71,15 @@ without letting the longest gaps dominate the fit.
 - NaN frames inside a window are skipped; the result is NaN only if every frame of the window is NaN. The trailing window includes t, so `speed_rel` is defined exactly where `speed_abs` is.
 - A frame's mean speed needs at least one tracked player with a speed; no minimum count.
 - `players_speed` is read as float64 (it is stored as float32, `mtah/data.py:130`). No numpy all-NaN warnings: empty frames and empty windows are handled before any `nanmedian` call.
+
+**Line details** (decided 2026-11-07, all **[choice]**; `mtah/deadball/lines.py`):
+- (a) Where the ball is visible, `last_line_dist_m` and `next_line_dist_m` hold the current ball's distance: a real measurement, so no jump at gap edges; `gap_len_s` = 0 still tells visible frames apart.
+- (b) A gap that opens or closes a half has no sighting on that side inside the half: that side is NaN, flagged by `last_line_missing` / `next_line_missing` (two indicators, the sides go missing independently). Unlike the gap times of step 2, an edge has a time but no ball position.
+- (c) `ball_out_m` is NaN while the ball is missing, with `ball_out_missing` (equal to `gap_len_s` > 0; kept so every feature that can be NaN has its own indicator).
+- (d) Outside a corner, `ball_out_m` is the straight-line distance to the pitch rectangle (3 m and 4 m past two lines → 5 m).
+- Outside the pitch the line distance is 0 (decided 2026-11-07 after the BAR–ATH check): with an unsigned distance a ball last seen 3 m behind the goal line looked like one 3 m inside. With 0, "< 2 m" equals c1's `near_line` exactly: on BAR–ATH gaps ≥ 10 s, 35.9 % start and 33.3 % end near a line, as c1; the unsigned version gave 25.6 % and 16.7 %. How far out stays in `ball_out_m`.
+- (e) "Line" = the two touchlines and two goal lines, never the halfway line, as c1's `near_line` (`research/checks/c1_ball_gaps.py:27-28`). Kick-offs belong to P3b.
+- Pitch (L, W) comes from `meta["pitch"]`, origin at a corner, pitch from 0 to L and 0 to W (BAR–ATH: `mtah/data.py:255-258`; external games **[unverified]**, P2 checks, guide `:154-155`). Line distances are unchanged when the ball is mirrored or turned 180°. On BAR–ATH no visible ball is outside two lines at once (0.000 %), so (d) does not bite there.
 
 Evidence on BAR–ATH (aggregates only):
 - Long gaps start within 2 m of a line 36 % of the time, against 9.1 % for a visible ball at random (c1 output).
