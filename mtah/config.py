@@ -111,9 +111,10 @@ class EXTERNAL:
 # P3a dead-ball p_dead (Cristiana). Defaults from docs/deadball_SPEC.md section 3.
 # =================================================================================================
 class DEADBALL:
-    GAP_CAP_S = 60.0          # cap on gap_len_s, t_since_seen_s, t_until_seen_s
+    STUB_GAP_S = 3.0          # v0 placeholder: dead where the ball is missing for >= this many s
+    # Gap features are log(1 + s), with no cap (spec section 3).
     OUT_CAP_M = 5.0           # cap on ball_out_m
-    SPEED_HALF_WIN_S = 0.5    # centred half-window for speed_abs
+    SPEED_SMOOTH_HALF_S = 0.5  # centred half-window smoothing speed_abs (not config.SPEED_HALF_WINDOW_S)
     REL_WIN_S = 10.0          # trailing window for speed_rel
     REL_FLOOR = 0.1           # m/s, floor on the speed_rel denominator
     L2 = 1.0                  # logistic regression L2 penalty
