@@ -1,0 +1,179 @@
+"""Every setting the pipeline uses, in one place, one section per owner.
+
+    from mtah import config
+    config.CACHE_DIR, config.game_cache("BAR-ATH"), config.DEADBALL.GAP_CAP_S, ...
+
+Check what it resolves to on your machine:
+
+    python -m mtah.config
+
+Rules (docs/LABELLING_GUIDE.md):
+- Modules work on any game, so they read fps, pitch and halves from that game's `meta`
+  (guide section 5), never from the TARGET GAME block below. That block is only for the BAR-ATH
+  loader (data.py) and the submission writer (submit.py).
+- No frame numbers written in here or in any module: they come from games.py (official, unedited).
+- Add your module's settings in your own section, with the default the spec agreed on.
+"""
+
+from __future__ import annotations
+
+import os
+import random
+import sys
+from pathlib import Path
+
+# =================================================================================================
+# P1 platform (Alexia): paths, target game, submission, seed
+# =================================================================================================
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# games.py lives at the repo root; make it importable however this module is run.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+import games  # noqa: E402
+
+# Must match the registration form exactly: the scorer names our entry after the CSV file name.
+TEAM_NAME = "Manita"
+
+# -- target game: BAR-ATH. Only data.py and submit.py read these. -------------------------------
+GAME = games.GAME
+SOURCE = games.DEFAULT_SOURCE                       # tactical: the submission is indexed to it
+FPS = games.GAMES[GAME]["fps"]
+N_FRAMES = games.source_frames(SOURCE, GAME)        # rows in the submission
+PITCH = tuple(games.GAMES[GAME]["pitch"])           # (length, width) in metres
+# Graded video frames, inclusive: [(half, first, last), ...]. Outside them the submission is X.
+HALF_BLOCKS = games.half_video_blocks(GAME)
+N_GRADED = sum(last - first + 1 for _, first, last in HALF_BLOCKS)
+
+# The tracking file numbers its frames from 1; video and submission count from 0
+# (starter/load_atd.py): video_frame = atd_frame_id - ATD_FRAME_ID_START.
+ATD_FRAME_ID_START = 1
+
+# -- labels (guide section 1) ------------------------------------------------------------------
+LABELS = ("H", "A", "D", "X")   # X only outside the halves: on a graded frame it is a miss
+
+# -- input data (gated, never committed) ---------------------------------------------------------
+DATA_DIR = Path(games.DATA_DIR)                     # ./data, or $MTAH_DATA_DIR
+ASSETS = {name: Path(p) for name, p in games.asset_paths(GAME, source=SOURCE).items()}
+# keys: video, atd_meta, atd_raw, homography, smart_tagging
+VALIDATION_DIR = DATA_DIR / "validation"            # external GT: <game>/<game>_gt.csv (guide 4)
+
+# -- cache: everything computed from match data (never committed) -------------------------------
+CACHE_DIR = Path(os.environ.get("MTAH_CACHE") or Path.home() / ".cache" / "mtah2027").expanduser()
+REPORTS_DIR = CACHE_DIR / "reports"                 # run_evaluation.py --out
+SUBMISSION_DIR = CACHE_DIR / "submission"
+SUBMISSION_CSV = SUBMISSION_DIR / f"{TEAM_NAME}.csv"
+
+
+def game_cache(game: str = GAME) -> Path:
+    """Folder for one game's arrays (p_dead.npy, p_home.npy, labels.npy, ...). Works for any game."""
+    return CACHE_DIR / game
+
+
+# -- experiment log (committed) ------------------------------------------------------------------
+EXPERIMENTS_CSV = REPO_ROOT / "experiments.csv"
+
+# -- reproducibility: two runs must give the same sha256 (guide section 2) -----------------------
+# 0 to match what already exists: the official scorer's BOOTSTRAP_SEED, optuna_tune.py --seed,
+# and docs/deadball_SPEC.md.
+SEED = 0
+
+
+def set_seeds(seed: int = SEED) -> None:
+    """Seed python and numpy. LightGBM and Optuna take the seed as an argument: pass config.SEED."""
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    try:
+        import numpy as np
+        np.random.seed(seed)
+    except ImportError:
+        pass
+
+
+# =================================================================================================
+# P2 external data and simulator (Theo)
+# =================================================================================================
+class EXTERNAL:
+    pass
+
+
+# =================================================================================================
+# P3a dead-ball p_dead (Cristiana). Defaults from docs/deadball_SPEC.md section 3.
+# =================================================================================================
+class DEADBALL:
+    GAP_CAP_S = 60.0          # cap on gap_len_s, t_since_seen_s, t_until_seen_s
+    OUT_CAP_M = 5.0           # cap on ball_out_m
+    SPEED_HALF_WIN_S = 0.5    # centred half-window for speed_abs
+    REL_WIN_S = 10.0          # trailing window for speed_rel
+    REL_FLOOR = 0.1           # m/s, floor on the speed_rel denominator
+    L2 = 1.0                  # logistic regression L2 penalty
+    EPS = 1e-3                # p_dead clipped to [EPS, 1 - EPS]
+    SEED = 0
+
+
+# =================================================================================================
+# P3b Smart Tagging and restart anchors (Alexia)
+# =================================================================================================
+class RESTARTS:
+    pass
+
+
+# =================================================================================================
+# P4 team-possession model (Bianca)
+# =================================================================================================
+class POSSESSION:
+    pass
+
+
+# =================================================================================================
+# P5 decoder and tuning (Andra)
+# =================================================================================================
+class DECODER:
+    pass
+
+
+# =================================================================================================
+# checks
+# =================================================================================================
+def _inside(child: Path, parent: Path) -> bool:
+    try:
+        child.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+# Derived match data in the repo would be published the moment the repo goes public.
+if _inside(CACHE_DIR, REPO_ROOT):
+    raise RuntimeError(
+        f"MTAH_CACHE points inside the repository ({CACHE_DIR}).\n"
+        "Cached arrays are derived match data and must never be committed. Point it outside, e.g.\n"
+        "  export MTAH_CACHE=~/.cache/mtah2027"
+    )
+
+
+def missing_assets(names=("atd_meta", "atd_raw", "homography", "smart_tagging")) -> list[Path]:
+    """Which of the named input files are not on disk (empty list = all present)."""
+    return [ASSETS[n] for n in names if not ASSETS[n].is_file()]
+
+
+def summary() -> str:
+    lines = [
+        f"team            {TEAM_NAME}",
+        f"game / source   {GAME} / {SOURCE}",
+        f"frames          {N_FRAMES} at {FPS} fps, {N_GRADED} graded",
+        "halves (video)  " + ", ".join(f"H{h} {a}..{b}" for h, a, b in HALF_BLOCKS),
+        f"pitch           {PITCH[0]} x {PITCH[1]} m",
+        f"data dir        {DATA_DIR}",
+        f"cache dir       {CACHE_DIR}"
+        + ("" if os.environ.get("MTAH_CACHE") else "   (default: MTAH_CACHE not set)"),
+        f"submission      {SUBMISSION_CSV}",
+        f"seed            {SEED}",
+    ]
+    for name, path in ASSETS.items():
+        lines.append(f"  {name:<14}{'ok     ' if path.is_file() else 'MISSING'} {path.name}")
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    print(summary())
