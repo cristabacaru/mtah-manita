@@ -124,6 +124,9 @@ class DEADBALL:
     REL_FLOOR = 0.1           # m/s, floor on the speed_rel denominator
     L2 = 1.0                  # logistic regression L2 penalty
     EPS = 1e-3                # p_dead clipped to [EPS, 1 - EPS]
+    HARD_CALL = 0.5           # evaluate.py: a frame is called dead when p_dead > HARD_CALL (spec 4)
+    ECE_BINS = 10             # evaluate.py: equal-width calibration bins over [0, 1] (spec 4)
+    OFFSET_IOU = 0.3          # evaluate.py: D runs paired for the boundary offset at IoU >= this (spec 4)
     SEED = 0
 
 

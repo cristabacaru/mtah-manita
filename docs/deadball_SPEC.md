@@ -102,15 +102,22 @@ Run per external game × 3 noise levels and per half. Hard call: `p_dead > 0.5`.
 - **Calibration**: expected calibration error, 10 equal-width bins weighted by frame count, over graded frames.
 - **Ablation**: drop one feature group at a time (gap / line / motion).
 
+**Evaluation details** (decided 2026-11-07, all **[choice]**; settings `HARD_CALL`, `ECE_BINS`, `OFFSET_IOU` in `config.DEADBALL`):
+- Hard call: a frame is D when `p_dead > HARD_CALL` (strictly), otherwise alive (scored as H; `alive_dead_f1` counts H and A alike). Everything is computed inside the GT's valid runs (`valid_runs`, `possession_metrics.py:259-271`), whole game and per half.
+- (a) Boundary offset = prediction minus GT, in frames (late = positive), on D runs paired by the official greedy order (`matched_gt_flags`, `:492-508`). A side where the GT run **and** the predicted run both sit on the half edge is left out: it is 0 by construction and would flatter the median. If only one of them sits on the edge, the error is real and kept. Reported as median and p90 of |error|.
+- (b) No bootstrap yet. It comes as its own step once external games and the fitted combiner exist; what to resample (games, D runs or time blocks) is chosen then. Every score is a function of one GT + `p_dead` pair, so the bootstrap only has to call it on resampled pieces.
+- (c) `experiments.csv` keeps its columns. `--all` prints a ready-to-paste row: owner P3a, `spellF1_mean` and `macroF1_mean` empty until P5's decoder exists, `games` = number of GT files, `noise_levels` = number of copies, scores in `notes` as `alive_dead_f1=…; dint_f1=…; ece=…; <provider>_onset_med=…f`. It never writes the file.
+- (d) Copies are listed in a manifest CSV `copy,gt,provider` written once P2 gives the layout (asked 2026-11-08); nothing is guessed from folder names. `copy` names `$MTAH_CACHE/<copy>/p_dead.npy`; `gt` is that game's `_gt.csv`; `provider` groups the offsets (decision 8). **[unverified]** that the 3 noise copies share the original game's GT.
+
 Report the mean over games × noise levels and log a row in `experiments.csv` (guide `:231-232`). Once P5's decoder exists, re-score through it with `run_evaluation.py`.
 
 | Piece | Done when | Command (modules planned) |
 |---|---|---|
 | `signals.py`, `lines.py` | all synthetic tests (§5) pass | `python tests/deadball/run_all.py` (plain asserts; pytest not installed) |
 | `combine.py` | two runs give the same sha256 of `p_dead.npy`; nothing outside [ε, 1−ε] inside halves | `python -m mtah.deadball.combine --game <g>` twice, then `shasum -a 256 $MTAH_CACHE/<g>/p_dead.npy` |
-| `evaluate.py` | GT scored against itself: F1s = 1.0, offsets = 0, synthetic shifts recovered | `python -m mtah.deadball.evaluate --self-test <g>` |
-| calibration | mean ECE < 0.05 **[choice]** | `python -m mtah.deadball.evaluate --all` |
-| module | beats the v0 stub on mean `alive_dead_f1` and D-interval F1 by > 0.02, no bootstrap overlap (guide `:229-230`) | `python -m mtah.deadball.evaluate --all --bootstrap 1000` |
+| `evaluate.py` | GT scored against itself: F1s = 1.0, offsets = 0, ECE = 0; GT shifted 25 frames late gives +25 | `python -m mtah.deadball.evaluate --self-test --gt <gt.csv>` |
+| calibration | mean ECE < 0.05 **[choice]** | `python -m mtah.deadball.evaluate --all <manifest.csv>` |
+| module | beats the v0 stub on mean `alive_dead_f1` and D-interval F1 by > 0.02, no bootstrap overlap (guide `:229-230`) | `python -m mtah.deadball.evaluate --all <manifest.csv>`; `--bootstrap` not built yet (decision (b)) |
 
 ## 5. Synthetic tests (no ground truth needed)
 
