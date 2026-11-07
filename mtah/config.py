@@ -141,6 +141,38 @@ class RESTARTS:
         "DEFENSIVE TRANSITION",
     )
 
+    # restarts.py (decisions 2026-11-07: R1 frame = moment the ball is played, R2 tracking only,
+    # R3 unclassified restarts kept as "unknown", R4 independent of p_dead). Values are [choice],
+    # from the Laws of the Game, c5_restarts.py, or the measurement quoted; none is fitted.
+    GAP_MIN_S = 3.0             # a ball-missing run this long is a stoppage candidate (c1, c5: 133 such gaps)
+    STILL_MIN_S = 1.0           # ball visible and still this long is a stoppage candidate (c5 template A)
+    STILL_DRIFT_M = 0.5         # "still": moved less than this over STILL_MIN_S (c5)
+    BALL_PLAYED_MPS = 3.0       # restart frame = first frame the ball is faster than this. BAR-ATH: after a
+                                # gap >= 3 s the ball passes 3 m/s in 93 % of cases, median 0.2 s after reappearing
+    SEARCH_S = 10.0             # look for that movement up to this long after the candidate starts
+    SLOW_MPS = 1.5              # team mean speed below this before a restart counts as "play was stopped" (c3)
+    SLOW_BEFORE_S = 2.0         # ... measured over this long before the candidate starts
+    MERGE_S = 3.0               # candidates closer than this are one restart
+    WINDOW_S = 1.0              # anchors.json window: frame +/- this, the decoder's tolerance
+    # Confidence bands (option B, 2026-11-08): recognised type 0.75-1.0, "unknown" 0.25-0.5, each cue
+    # (slow_before, ball_played) adds CONF_STEP. Still-ball candidates of unknown type are dropped.
+    # Evidence: research/checks/c9_restarts_vs_tags.py.
+    CONF_KNOWN = 0.75
+    CONF_UNKNOWN = 0.25
+    CONF_STEP = 0.125
+    # Restart zones, Laws of the Game (corner arc 1 m, goal area 5.5 m x 18.32 m) plus c5's margins
+    # for tracking noise.
+    CORNER_R_M = 3.0
+    THROW_IN_M = 2.0            # distance to a touchline (or past it)
+    GOAL_AREA_DEPTH_M = 6.5     # 5.5 m + 1 m
+    GOAL_AREA_HALF_WIDTH_M = 18.32 / 2 + 1.0
+    CENTRE_R_M = 3.0
+    # Kick-off formation (c5 kickoff_episodes, "loose" variant: found 5 of 6 tagged kick-offs, no false hits)
+    KICKOFF_TOL_M = 2.0         # a player may be this far into the other half
+    KICKOFF_MAX_VIOLATORS = 2
+    KICKOFF_MIN_PLAYERS = 16
+    KICKOFF_HOLD_S = 2.0
+
 
 # =================================================================================================
 # P4 team-possession model (Bianca)

@@ -45,7 +45,8 @@ Rules on the input:
 | `camera_step.npy` (BAR–ATH only) | `(n,)` float64, metres | camera-aim movement per frame, NaN where the homography is invalid (`common.py:133-143`) |
 
 **P3b formats.** Current proposals (`README.md:87-88`); Alexia owns them and `p_dead` reads neither. See §6.
-- `anchors.json`: `[{"frame": int, "type": str, "team": "H"|"A", "confidence": float}]`, type ∈ kickoff, throw-in, corner, goal kick, free kick (exact strings and confidence range: Alexia)
+- `anchors.json` (**decided 2026-11-08**, written by `mtah/deadball/restarts.py`, format in its docstring):
+  `[{"frame", "window": [lo, hi), "type": kickoff|throw_in|corner|goal_kick|unknown, "team": "H"|"A"|null, "confidence": 0.25–1.0, "half", "source", "slow_before", "ball_played"}]`, tracking only, any game
 - `tags.json` (**decided 2026-11-07**, written by `mtah/deadball/tags.py`, format in its docstring):
   `[{"start_frame", "end_frame" (exclusive), "code", "type" | null, "team": "H"|"A"|null, "possession_team": "H"|"A"|null, "half": int|null}]`, all 638 instances
 
@@ -136,11 +137,16 @@ Report the mean over games × noise levels and log a row in `experiments.csv` (g
 
 ## 6. Open questions for Alexia (P3b)
 
-1. **`anchors.json`, `frame`:** is it the first live frame (the restart is taken) or the moment the ball is placed? Are anchors only inside halves?
+1. ~~**`anchors.json`, `frame`:** first live frame or the moment the ball is placed? Only inside halves?~~
+   **Answered 2026-11-08 (Alexia, R1):** the moment the ball is played (first frame it moves faster than 3 m/s),
+   with a ±1 s `window`. Only inside halves.
 2. ~~**`tags.json`, `end_frame`:** keep it exclusive? Is `team` the raw tag or flipped on DEFENDING codes?~~
    **Answered 2026-11-07 (Alexia):** `end_frame` is exclusive, as the official loader. Both: `team` is the raw
    tag as H/A, `possession_team` is flipped for the four codes in `config.RESTARTS.TAG_DEFENDING_CODES`
    (a fixed rule from the code names; c4 agreement with the nearest-player team is 9–33 % for those codes).
-3. **External games:** can the tracking-only parts of `restarts.py` (e.g. the kick-off detector, `c5_restarts.py:29-49`) run on P2's games? Otherwise P5 can't tune anchor weights anywhere.
-4. **Dependency:** does `restarts.py` want `p_dead` as an input (e.g. look for restarts at the end of D runs)? If yes, `p_dead` runs first.
-5. **`camera_step.npy`:** is it useful for restart detection too? Shall we agree its file name and units?
+3. ~~**External games:** can the tracking-only parts of `restarts.py` run on P2's games?~~
+   **Answered (R2):** all of `restarts.py` is tracking only and runs on any game in the shared schema.
+4. ~~**Dependency:** does `restarts.py` want `p_dead` as an input?~~
+   **Answered (R4):** no. Anchors are independent of `p_dead`, so the decoder gets two separate opinions.
+5. ~~**`camera_step.npy`:** useful for restart detection too?~~
+   **Answered:** not used. It exists for BAR–ATH only, so it would break R2 (tracking only, testable on external games).
