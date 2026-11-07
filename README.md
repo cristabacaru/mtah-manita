@@ -1,7 +1,4 @@
-# MTAH 2027: Ball possession (team `<team_name>`)
-
-> Replace `<team_name>` everywhere with the exact team name all members gave on the registration
-> form. The scorer names our row on the board after the CSV file name.
+# MTAH 2027: Ball possession (team `Manita`)
 
 This is our entry for More Than A Hack 2027, Phase 1. We label each of the 199,319 frames of the
 BAR–ATH tactical video (25 fps) as `H` / `A` / `D` / `X`. Entries are ranked on **spellF1**. The floor to
@@ -49,7 +46,7 @@ mtah/                     OUR PIPELINE (all new work goes here)
 ├─ config.py              every setting and seed                                P1 (planned)
 ├─ data.py                ATD -> per-half .npy arrays (metres, video frames)     P1 (planned)
 ├─ evaluate.py            score(labels, gt) wrapper, experiments.csv logging     P1 (planned)
-├─ submit.py              writes <team_name>.csv (X outside graded halves) + sha256   P1 (planned)
+├─ submit.py              writes Manita.csv (X outside graded halves) + sha256   P1 (planned)
 ├─ external/              DFL/IDSSE + Metrica loaders, same schema as data.py    P2 (planned)
 ├─ simulate.py            ball-dropout / noise simulator for external games      P2 (planned)
 ├─ deadball/              dead-ball module                                       P3
@@ -128,17 +125,17 @@ See `research/checks/README.md` for the full list.
 
 ### Before submitting
 ```bash
-bash run.sh                                           # -> <team_name>.csv
-python evaluation/validate_submission.py <team_name>.csv
-shasum -a 256 <team_name>.csv                         # run twice: hashes must match
+bash run.sh                                           # -> Manita.csv
+python evaluation/validate_submission.py Manita.csv
+shasum -a 256 Manita.csv                         # run twice: hashes must match
 git ls-files | grep '^data/'                          # only data/README.md
 ```
 Submit through the official Google form, one response per team (the last one before the deadline
 counts). You need:
 - the team name;
-- `<team_name>.csv`;
+- `Manita.csv`;
 - the public URL of this repo (switch it to Public first);
-- the technical document as `<team_name>.pdf` or `.md`.
+- the technical document as `Manita.pdf` or `.md`.
 
 You need a Google account to upload. There is no leaderboard and no feedback before the deadline.
 
