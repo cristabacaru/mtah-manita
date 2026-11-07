@@ -100,6 +100,13 @@ def validate(arrays: dict, meta: dict) -> None:
     n = int(meta["n_frames"])
     ball, pxy, psp, team = (np.asarray(arrays[k]) for k in ARRAY_KEYS)
     p = team.shape[0]
+    length, width = (float(v) for v in meta["pitch"])
+    m = config.OUTSIDE_MARGIN_M
+    with np.errstate(invalid="ignore"):
+        px, py = pxy[..., 0], pxy[..., 1]
+        tracked = np.isfinite(px)
+        far = (px < -m) | (px > length + m) | (py < -m) | (py > width + m)
+    outside_share = float(far[tracked].mean()) if tracked.any() else 0.0
     checks = [
         (ball.shape == (n, 2), f"ball_xy shape {ball.shape}, expected ({n}, 2)"),
         (pxy.shape == (n, p, 2), f"players_xy shape {pxy.shape}, expected ({n}, {p}, 2)"),
@@ -110,6 +117,9 @@ def validate(arrays: dict, meta: dict) -> None:
         (np.array_equal(np.isnan(ball[:, 0]), np.isnan(ball[:, 1])), "ball_xy: x and y must be NaN together"),
         (np.all(np.isnan(psp[np.isnan(pxy[..., 0])])), "players_speed must be NaN where the slot is empty"),
         (np.all(psp[np.isfinite(psp)] >= 0), "players_speed must be >= 0"),
+        (outside_share <= config.OUTSIDE_MAX_SHARE,
+         f"{outside_share:.1%} of player positions are over {m:g} m outside [0, L] x [0, W]: "
+         "is the origin at a corner and are the units metres? (guide section 5)"),
         (np.all(psp[np.isfinite(psp)] <= config.SPEED_MAX_MPS),
          f"players_speed must be <= {config.SPEED_MAX_MPS} m/s (use position_speed)"),
     ]

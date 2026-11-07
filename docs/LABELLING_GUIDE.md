@@ -182,6 +182,33 @@ Positions are kept; only the speed is dropped.
 (`ball_xy.npy`, `players_xy.npy`, `players_speed.npy`, `players_team.npy`) plus `meta.json`
 (`pitch`, `fps`, `halves`, `n_frames`). Read it back with `mtah.data.load(game)`.
 
+**[decision, P1, 2026-11-07] Pitch coordinates: origin at a corner, metres, 0 ≤ x ≤ L, 0 ≤ y ≤ W.**
+BAR–ATH: normalised ATD × `meta["pitch"]` (`mtah/data.py`). External loaders must convert to the same:
+kloppy's defaults differ. DFL tracking has its origin **at the centre**, in metres, y bottom to top
+(`SportecTrackingDataCoordinateSystem`, kloppy 3.18.0 `domain/models/common.py:1003-1020`); kloppy's own
+default is normalised 0–1 from the **top left**, y top to bottom (`KloppyCoordinateSystem`,
+`:794-819`). `mtah.data.save()` rejects a game where more than 1 % of player positions lie over 5 m
+outside the pitch: 0.0024 % on BAR–ATH, about 37 % if the origin were at the centre.
+
+### Feature conventions (every feature module)
+
+**[decision, P1 + P3a, 2026-11-07]** proposed by Cristiana, first used in `mtah/deadball/signals.py`
+(rules 1–4) and `lines.py` (rule 5); reasons in `docs/deadball_SPEC.md`, "Motion details" and "Line
+details".
+
+1. **Output:** float64, shape `(n_frames,)`, `NaN` outside the halves.
+2. **Time windows:** round(seconds × fps) frames, inside one half only. At a half edge the window
+   shrinks; it never reaches into the other half and is never `NaN` just because of the edge.
+   Exception: `players_speed` itself (P1, ±0.2 s) is computed over the whole recording, so the first and
+   last 5 frames of a half use positions just outside it (`deadball_SPEC.md` §2, accepted).
+3. **`NaN` inside a window is skipped**; the result is `NaN` only if the whole window is `NaN`.
+4. **Unknown stays `NaN`**, with a `<feature>_missing` flag (1/0). Whoever fits the model fills the
+   value in (e.g. the training median); never 0.
+5. **Lines** = the two touchlines and two goal lines, never the halfway line. Distance to a line =
+   max(0, min(x, L − x, y, W − y)): 0 on or past a line. "< 2 m" is then the same test as c1's
+   `near_line` (`research/checks/c1_ball_gaps.py:27-28`). How far a ball is *outside* the pitch is a
+   separate feature (`ball_out_m`). Assumes the corner origin above.
+
 **[fact]** BAR–ATH columns are tracker slots, not people (24 home + 22 away; median tracklet 35.5 s;
 c6). Modules use **per-frame team aggregates only**: mean speed, nearest player of each team, counts
 within a radius. Never follow a column over time.

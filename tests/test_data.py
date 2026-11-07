@@ -112,6 +112,17 @@ def test_validate_rejects_bad_input():
         except ValueError:
             continue
         raise AssertionError("validate accepted bad input")
+    centred = dict(arrays, players_xy=arrays["players_xy"] - np.array([52.5, 34.0]))
+    centred["players_speed"] = data.position_speed(centred["players_xy"], 25)
+    normalised = dict(arrays, players_xy=arrays["players_xy"] / 105.0 * 3)   # wrong units
+    for bad in (centred,):
+        try:
+            data.validate(bad, meta)
+        except ValueError as err:
+            assert "origin" in str(err)
+            continue
+        raise AssertionError("validate accepted a centre origin")
+    data.validate(normalised, meta)   # small values stay inside the pitch: not this check's job
     try:
         data.validate(arrays, dict(meta, halves=[[0, 60]]))
     except ValueError:

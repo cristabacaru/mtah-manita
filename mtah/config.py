@@ -57,6 +57,11 @@ SPEED_HALF_WINDOW_S = 0.2
 # shows up as a jump, up to 99.5 m/s on BAR-ATH. 12 m/s is a physical limit (fastest human sprint
 # about 12.4 m/s), not a property of one game; the ATD's own speed column never exceeds 9.43.
 SPEED_MAX_MPS = 12.0
+# data.save() rejects a game where more than OUTSIDE_MAX_SHARE of player positions lie more than
+# OUTSIDE_MARGIN_M outside [0, L] x [0, W]: catches a loader that kept the origin at the centre.
+# BAR-ATH: 0.0024 % beyond 5 m; a centre origin would put about 37 % there (guide section 5).
+OUTSIDE_MARGIN_M = 5.0
+OUTSIDE_MAX_SHARE = 0.01
 
 # -- labels (guide section 1) ------------------------------------------------------------------
 LABELS = ("H", "A", "D", "X")   # X only outside the halves: on a graded frame it is a miss
