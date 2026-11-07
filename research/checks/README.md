@@ -1,6 +1,6 @@
 # Verification checks
 
-Scripts behind `research/verification_report.md`. Each one prints aggregates only (counts, shares,
+Exploratory checks on the BAR–ATH data. Each one prints aggregates only (counts, shares,
 percentiles): no frame-level values, labels or positions. None of them reads the ground truth.
 
     export MTAH_CACHE=/some/scratch/dir      # parsed-ATD cache, kept outside the repo

@@ -52,10 +52,17 @@ mtah/                     OUR PIPELINE (all new work goes here)
 ├─ submit.py              writes <team_name>.csv (X outside graded halves) + sha256   P1 (planned)
 ├─ external/              DFL/IDSSE + Metrica loaders, same schema as data.py    P2 (planned)
 ├─ simulate.py            ball-dropout / noise simulator for external games      P2 (planned)
-├─ deadball.py            p_dead[t], restart anchors                             P3 (planned)
+├─ deadball/              dead-ball module                                       P3
+│  ├─ signals.py          ball-gap + motion-collapse signals (all frames)        P3a Cristiana (planned)
+│  ├─ lines.py            ball distance past / to the touchline and goal line    P3a Cristiana (planned)
+│  ├─ combine.py          all evidence -> final p_dead[t]                        P3a Cristiana (planned)
+│  ├─ evaluate.py         D-interval F1 + boundary offset on external games      P3a Cristiana (planned)
+│  ├─ tags.py             Smart Tagging -> tags.json (frames, type, H/A team)    P3b Alexia (planned)
+│  └─ restarts.py         kick-off + restart detection, restart team -> anchors  P3b Alexia (planned)
 ├─ ball.py                ball-gap bridging (interpolation, RTS smoother)        P4 (planned)
 ├─ features.py, model.py  team-possession features + LightGBM -> p_home[t]      P4 (planned)
-└─ decode.py              HSMM/Viterbi decoder, boundary snapping                P5 (planned)
+├─ decode.py              HSMM/Viterbi decoder, boundary snapping                P5
+└─ optuna_tune.py         decoder tuning scaffold                                P5
 run.sh                    one command: raw data -> final CSV              P1 (planned)
 experiments.csv           one row per experiment (who, what, external scores)
 docs/TECHNICAL.md         technical doc, one section per owner (skeleton)
@@ -63,7 +70,7 @@ docs/TECHNICAL.md         technical doc, one section per owner (skeleton)
 evaluation/               official scorer (copied from the challenge repo, do not edit)
 starter/                  official loaders + baseline (do not edit, import from them)
 games.py                  official game metadata and asset paths (do not edit)
-research/checks/          exploratory scripts behind our verification report
+research/checks/          exploratory scripts, aggregates only
 tools/                    Metrica sample-game converters + GT viewer   (to be added)
 data/                     match data only (tactical/, broadcast/, validation/), NEVER committed
 ```
@@ -77,12 +84,17 @@ different behaviour, wrap the function in `mtah/`.
 Every module works on **per-half arrays indexed by video frame**. External games must have the
 exact same shape and schema as the target game, so every module runs on both unchanged.
 
-| Producer | Output (in `$MTAH_CACHE/<game>/`) | Meaning |
-|---|---|---|
-| P3 `deadball.py` | `p_dead.npy`, shape `(n,)`, float in [0, 1] | probability the ball is dead |
-| P3 `deadball.py` | `anchors.json`: list of `{frame, type, team, confidence}` | detected restarts (kickoff, throw-in, corner, goal kick, free kick) |
-| P4 `model.py` | `p_home.npy`, shape `(n,)`, float in [0, 1] | P(home in possession \| ball alive) |
-| P5 `decode.py` | `labels.npy`, shape `(n,)`, values `H`/`A`/`D` | final labels |
+| Producer | Output (in `$MTAH_CACHE/<game>/`) | Meaning | Consumers |
+|---|---|---|---|
+| P3a `deadball/combine.py` | `p_dead.npy`, shape `(n,)`, float in [0, 1] | probability the ball is dead | P5 |
+| P3b `deadball/restarts.py` | `anchors.json`: list of `{frame, type, team, confidence}` | detected restarts (kickoff, throw-in, corner, goal kick, free kick) | P5 |
+| P3b `deadball/tags.py` | `tags.json`: list of `{start_frame, end_frame, type, team}` | Smart Tagging phases on video frames, team as `H`/`A` | P5 |
+| P4 `model.py` | `p_home.npy`, shape `(n,)`, float in [0, 1] | P(home in possession \| ball alive) | P5 |
+| P5 `decode.py` | `labels.npy`, shape `(n,)`, values `H`/`A`/`D` | final labels | `submit.py` |
+
+`p_dead` uses tracking only, never anchors or tags, so it can be validated on external games (they
+have no Smart Tagging). The decoder (P5) alone places D boundaries, using anchors and tags. P3b owns
+the `anchors.json` and `tags.json` formats; `docs/deadball_SPEC.md` covers `p_dead` only.
 
 As long as these shapes hold, P3, P4 and P5 can work in parallel against stub inputs (e.g.
 `p_dead` = ball-missing-for-3-s mask, `p_home` = nearest-team baseline).
@@ -104,7 +116,7 @@ python evaluation/run_evaluation.py \
 - `--out` keeps `scoreboard.csv` and the reports out of the repo.
 - The external GT files (`data/validation/game{1,2}/`) come from P2's converters in `tools/`.
 Report the **mean spellF1 over all held-out external games and noise levels**, and add a row to
-`experiments.csv`: date, owner, change, spellF1, macroF1, notes. Keep a component only if
+`experiments.csv`: date, owner, change, spellF1_mean, macroF1_mean, games, noise_levels, notes. Keep a component only if
 it adds more than ~0.02 with no bootstrap overlap.
 
 ### Research checks (aggregates only)
@@ -138,7 +150,8 @@ You need a Google account to upload. There is no leaderboard and no feedback bef
 |---|---|
 | P1: Platform and submission lead | Alexia |
 | P2: External data and simulator | Theo |
-| P3: Dead-ball module | Cristiana + Alexia |
+| P3a: Dead ball (p_dead signal, combination, evaluation) | Cristiana |
+| P3b: Restarts, Smart Tagging, anchors | Alexia |
 | P4: Team-possession model | Bianca |
 | P5: Decoder, tuning and error analysis | Andra |
 
