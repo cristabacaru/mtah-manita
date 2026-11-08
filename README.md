@@ -47,8 +47,9 @@ mtah/                     OUR PIPELINE (all new work goes here)
 ├─ data.py                ATD -> shared-schema .npy arrays (guide section 5)     P1
 ├─ evaluate.py            score(labels, gt) wrapper, experiments.csv logging     P1 (planned)
 ├─ submit.py              writes Manita.csv (X outside graded halves) + sha256   P1 (planned)
-├─ external/              DFL/IDSSE + Metrica loaders, same schema as data.py    P2 (planned)
-├─ simulate.py            ball-dropout / noise simulator for external games      P2 (planned)
+├─ external/              DFL/IDSSE + Metrica loaders, suite, export (README)    P2 Theo
+├─ simulate.py            ball-gap / noise simulator calibrated to BAR-ATH        P2 Theo
+├─ schema.py              internal Game container of mtah/external/              P2 Theo
 ├─ deadball/              dead-ball module                                       P3
 │  ├─ signals.py          ball-gap + motion-collapse signals (all frames)        P3a Cristiana (planned)
 │  ├─ lines.py            ball distance past / to the touchline and goal line    P3a Cristiana (planned)
@@ -68,7 +69,7 @@ evaluation/               official scorer (copied from the challenge repo, do no
 starter/                  official loaders + baseline (do not edit, import from them)
 games.py                  official game metadata and asset paths (do not edit)
 research/checks/          exploratory scripts, aggregates only
-tools/                    Metrica sample-game converters + GT viewer   (to be added)
+tools/                    Metrica sample-game converters + GT viewer              P2 Theo
 data/                     match data only (tactical/, broadcast/, validation/), NEVER committed
 ```
 
