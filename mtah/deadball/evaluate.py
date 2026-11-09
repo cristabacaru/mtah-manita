@@ -15,11 +15,13 @@ never edited):
     python -m mtah.deadball.evaluate --game <copy> --gt <gt.csv> [--provider DFL]
     python -m mtah.deadball.evaluate --self-test --gt <gt.csv>
     python -m mtah.deadball.evaluate --all <manifest.csv> --change "what changed"
+    python -m mtah.deadball.evaluate --suite [--levels target heavy] --change "what changed"
 
 The manifest is a CSV with columns copy,gt,provider: one row per degraded copy, gt relative to the
-repo root or absolute. It is written once P2 gives the layout (decision (d)); nothing is guessed.
---all prints a ready-to-paste experiments.csv row (scores in notes, decision (c)); it never writes
-experiments.csv. Prints aggregates only, never frame-level values.
+repo root or absolute. --suite reads P2's data/validation/suite_manifest.json instead (name, source,
+level, gt; provider from config.EXTERNAL) and reports each noise level separately. Both print a
+ready-to-paste experiments.csv row in score_suite's layout (scores in notes, decision (c)); they
+never write experiments.csv. Prints aggregates only, never frame-level values.
 """
 from __future__ import annotations
 
@@ -238,7 +240,10 @@ def self_test(gt_codes: np.ndarray, shift: int = 25) -> list[str]:
 # --- many copies -----------------------------------------------------------------------------------
 
 def read_manifest(path: str | Path) -> list[dict]:
-    """Rows {copy, gt, provider} from the manifest CSV; gt made absolute against the repo root."""
+    """Rows {copy, gt, provider, level, source} from a manifest CSV; gt made absolute against the repo root.
+
+    A CSV manifest has no noise level or source match: level is "all", source is the GT file.
+    """
     with open(path, newline="") as handle:
         rows = list(csv.DictReader(handle))
     if not rows or tuple(rows[0].keys()) != MANIFEST_COLUMNS:
@@ -246,43 +251,97 @@ def read_manifest(path: str | Path) -> list[dict]:
     for row in rows:
         gt = Path(row["gt"])
         row["gt"] = gt if gt.is_absolute() else config.REPO_ROOT / gt
+        row["level"], row["source"] = "all", str(row["gt"])
     return rows
 
 
-def evaluate_manifest(manifest: str | Path, cache_dir=None, out_dir=None) -> dict:
-    """Score every copy, write one JSON each, return the means and the per-provider offsets."""
-    rows = read_manifest(manifest)
-    per_copy, pooled = {}, {}
+def provider_of(source: str) -> str:
+    """"DFL" or "Metrica" from P2's own game lists in config.EXTERNAL (decision of 2026-11-09).
+
+    DFL games are named in config.py as "dfl_" + each id of DFL_MATCHES; every other game of
+    CLEAN_GAMES is Metrica. A game in neither list raises, so nothing lands in the wrong group.
+    """
+    dfl = {"dfl_" + m for m in config.EXTERNAL.DFL_MATCHES}     # as config.EXTERNAL.SUITE_GAMES builds them
+    if source in dfl:
+        return "DFL"
+    if source in config.EXTERNAL.CLEAN_GAMES:
+        return "Metrica"
+    raise ValueError(f"{source!r} is in neither config.EXTERNAL.DFL_MATCHES nor CLEAN_GAMES: provider unknown")
+
+
+def read_suite(manifest: str | Path | None = None, levels=None) -> list[dict]:
+    """Rows {copy, gt, provider, level, source} from P2's suite_manifest.json (default config.EXTERNAL.SUITE_MANIFEST).
+
+    Only name, source, level and gt are read; the manifest's halves (end-exclusive) are never used:
+    halves come from the GT file itself (pm.valid_runs).
+    """
+    path = Path(manifest) if manifest is not None else config.EXTERNAL.SUITE_MANIFEST
+    entries = json.loads(path.read_text())["games"]
+    rows = [{"copy": e["name"], "gt": config.VALIDATION_DIR / e["gt"], "provider": provider_of(e["source"]),
+             "level": e["level"], "source": e["source"]}
+            for e in entries if levels is None or e["level"] in levels]
+    if not rows:
+        raise ValueError(f"{path}: no games" + (f" at levels {list(levels)}" if levels else ""))
+    return rows
+
+
+def evaluate_rows(rows: list[dict], cache_dir=None, out_dir=None) -> dict:
+    """Score every copy (one JSON each), then means per noise level and offsets per level and provider.
+
+    Checks first that every copy has a p_dead.npy, and raises listing the missing ones.
+    """
+    folder = (lambda c: Path(cache_dir) / c) if cache_dir is not None else config.game_cache
+    missing = [r["copy"] for r in rows if not (folder(r["copy"]) / "p_dead.npy").is_file()]
+    if missing:
+        raise FileNotFoundError(f"no p_dead.npy for {len(missing)} game(s): {', '.join(missing)}. "
+                                "Run python -m mtah.deadball.combine --game <game> first.")
+    per_copy, levels = {}, {}
     for row in rows:
         report = score_copy(read_gt(row["gt"]), load_p_dead(row["copy"], cache_dir))
         write_report(report, row["copy"], out_dir)
-        per_copy[row["copy"]] = report
-        pool = pooled.setdefault(row["provider"], {"onset": [], "end": []})
+        per_copy[row["copy"]] = {"level": row["level"], "provider": row["provider"],
+                                 "alive_dead_f1": report["alive_dead_f1"],
+                                 "d_interval_f1": report["d_interval"]["mean_f1"], "ece": report["ece"]}
+        lv = levels.setdefault(row["level"], {"reports": [], "pooled": {}})
+        lv["reports"].append(report)
+        pool = lv["pooled"].setdefault(row["provider"], {"onset": [], "end": []})
         pool["onset"] += report["_onset"]
         pool["end"] += report["_end"]
-    reports = list(per_copy.values())
-    return {
-        "n_copies": len(rows),
-        "n_games": len({str(r["gt"]) for r in rows}),
-        "alive_dead_f1": float(np.mean([r["alive_dead_f1"] for r in reports])),
-        "d_interval_f1": float(np.mean([r["d_interval"]["mean_f1"] for r in reports])),
-        "ece": float(np.mean([r["ece"] for r in reports])),
-        "by_provider": {p: {"onset": summarise(v["onset"]), "end": summarise(v["end"])}
-                        for p, v in sorted(pooled.items())},
-    }
+    summary = {}
+    for name, lv in sorted(levels.items()):
+        reps = lv["reports"]
+        summary[name] = {
+            "n_copies": len(reps),
+            "alive_dead_f1": float(np.mean([r["alive_dead_f1"] for r in reps])),
+            "d_interval_f1": float(np.mean([r["d_interval"]["mean_f1"] for r in reps])),
+            "ece": float(np.mean([r["ece"] for r in reps])),
+            "by_provider": {p: {"onset": summarise(v["onset"]), "end": summarise(v["end"])}
+                            for p, v in sorted(lv["pooled"].items())},
+        }
+    return {"n_copies": len(rows), "n_games": len({r["source"] for r in rows}), "levels": summary,
+            "per_copy": per_copy}
+
+
+def evaluate_manifest(manifest: str | Path, cache_dir=None, out_dir=None) -> dict:
+    """evaluate_rows on a CSV manifest (columns copy,gt,provider)."""
+    return evaluate_rows(read_manifest(manifest), cache_dir, out_dir)
 
 
 def experiments_row(summary: dict, change: str, date: str | None = None) -> str:
-    """One experiments.csv line (its header: experiments.csv:1); dead-ball scores go in notes (decision (c))."""
+    """One experiments.csv line in score_suite's layout (score_suite.py:71-85, decision (b) of 2026-11-09):
+    games = number of source matches, noise_levels = the level names, one block per level in notes.
+    spellF1_mean and macroF1_mean stay empty until P5's decoder exists (decision (c))."""
     def fmt(x):
         return "NA" if x is None else f"{x:+.0f}"
-    notes = [f"alive_dead_f1={summary['alive_dead_f1']:.3f}", f"dint_f1={summary['d_interval_f1']:.3f}",
-             f"ece={summary['ece']:.3f}"]
-    for provider, s in summary["by_provider"].items():
-        notes.append(f"{provider}_onset_med={fmt(s['onset']['median'])}f")
-        notes.append(f"{provider}_end_med={fmt(s['end']['median'])}f")
+    blocks = []
+    for level, s in summary["levels"].items():
+        parts = [level, f"alive_dead_f1={s['alive_dead_f1']:.3f}", f"dint_f1={s['d_interval_f1']:.3f}",
+                 f"ece={s['ece']:.3f}"]
+        for provider, b in s["by_provider"].items():
+            parts += [f"{provider}_onset_med={fmt(b['onset']['median'])}f", f"{provider}_end_med={fmt(b['end']['median'])}f"]
+        blocks.append(" ".join(parts))
     fields = [date or _dt.date.today().isoformat(), "P3a", change, "", "",
-              str(summary["n_games"]), str(summary["n_copies"]), "; ".join(notes)]
+              str(summary["n_games"]), "/".join(summary["levels"]), "; ".join(blocks)]
     buffer = __import__("io").StringIO()
     csv.writer(buffer, lineterminator="").writerow(fields)
     return buffer.getvalue()
@@ -303,20 +362,39 @@ def _print_report(name: str, report: dict) -> None:
             print(f"  {side} offset: no paired runs")
 
 
+def _print_summary(summary: dict) -> None:
+    print(f"{'game':<28} {'level':<7} {'provider':<8} {'alive_dead_f1':>13} {'D-int F1':>9} {'ECE':>6}")
+    for name, c in summary["per_copy"].items():
+        print(f"{name:<28} {c['level']:<7} {c['provider']:<8} {c['alive_dead_f1']:>13.3f} "
+              f"{c['d_interval_f1']:>9.3f} {c['ece']:>6.3f}")
+    print(f"\nmean per level ({summary['n_games']} matches, {summary['n_copies']} copies):")
+    for level, s in summary["levels"].items():
+        print(f"  {level:<7} n={s['n_copies']}: alive_dead_f1 {s['alive_dead_f1']:.3f} | D-interval F1 "
+              f"{s['d_interval_f1']:.3f} | ECE {s['ece']:.3f}")
+        for provider, b in s["by_provider"].items():
+            on, en = b["onset"], b["end"]
+            med = lambda x: "NA" if x["median"] is None else f"{x['median']:+.0f}"  # noqa: E731
+            print(f"           {provider:<8} offset median (frames, + = late): onset {med(on)} over {on['n']}, "
+                  f"end {med(en)} over {en['n']}")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--game", help="copy name: reads $MTAH_CACHE/<copy>/p_dead.npy")
     mode.add_argument("--self-test", action="store_true", help="score --gt against itself and a shifted copy")
     mode.add_argument("--all", metavar="MANIFEST", help="CSV with columns copy,gt,provider")
+    mode.add_argument("--suite", action="store_true", help="every game of P2's suite_manifest.json")
+    parser.add_argument("--levels", nargs="+", help="--suite: only these noise levels (light target heavy)")
     parser.add_argument("--gt", help="frame,label CSV (needed with --game and --self-test)")
-    parser.add_argument("--change", default="", help="--all: text for the experiments.csv 'change' column")
+    parser.add_argument("--change", default="", help="--all/--suite: text for the experiments.csv 'change' column")
     parser.add_argument("--out", help="report folder (default $MTAH_CACHE/reports/deadball)")
     args = parser.parse_args(argv)
 
-    if args.all:
-        summary = evaluate_manifest(args.all, out_dir=args.out)
-        print(json.dumps(summary, indent=2, sort_keys=True))
+    if args.all or args.suite:
+        rows = read_suite(levels=args.levels) if args.suite else read_manifest(args.all)
+        summary = evaluate_rows(rows, out_dir=args.out)
+        _print_summary(summary)
         print("\nexperiments.csv row (paste it yourself if this run is worth keeping):")
         print(experiments_row(summary, args.change))
         return 0
