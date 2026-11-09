@@ -59,6 +59,11 @@ look at per-game numbers too.
 - DFL keeps the ball parked just outside the line through stoppages; the simulator treats such
   runs (> 1 s outside) as unseen, as on BAR–ATH.
 - DFL/Sportec y runs bottom to top; `dfl.py` converts it to the ATD direction (`y = W/2 - Y`).
+- **Two conventions for halves, same frames:** `suite_manifest.json` writes them end-exclusive
+  (`[first, stop)`, as `mtah.schema.Game` and the official scorer), while each game's `meta.json`
+  writes them end-inclusive (`[first, last]`, guide §5). Example, `dfl_J03WMX__heavy`: manifest
+  `[0, 70708]` = meta.json `[0, 70707]`. Read halves from `meta.json` (`mtah.data.load`); don't mix
+  the two. (Added by Cristiana, P3a, 2026-11-09.)
 
 ## Rebuild everything (public data only)
 
