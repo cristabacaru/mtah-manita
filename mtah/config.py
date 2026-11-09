@@ -109,7 +109,28 @@ def set_seeds(seed: int = SEED) -> None:
 # P2 external data and simulator (Theo)
 # =================================================================================================
 class EXTERNAL:
-    pass
+    """Paths and settings of mtah/external/ and mtah/simulate.py (guide sections 4 and 5).
+
+    Raw downloads sit in data/external/ (gated, never committed). Everything computed goes under
+    $MTAH_CACHE: the internal mtah.schema.Game caches in p2/games/, the target aggregates and fitted
+    simulator parameters in p2/, and each game in the shared schema in $MTAH_CACHE/<game>/ (data.save).
+    GT and the competition-format ATD of every validation game go to data/validation/<game>/ (guide 4).
+    """
+    RAW_DIR = DATA_DIR / "external"                     # metrica-sample-data/, dfl/
+    METRICA_DIR = RAW_DIR / "metrica-sample-data" / "data"
+    DFL_DIR = RAW_DIR / "dfl"
+    P2_DIR = CACHE_DIR / "p2"
+    GAMES_DIR = P2_DIR / "games"                        # clean external games, mtah.schema.Game
+    TARGET_STATS = P2_DIR / "target_stats.json"         # BAR-ATH aggregates (stats.py --target)
+    SIM_PARAMS = P2_DIR / "sim_params.json"             # fitted by calibrate.py
+    SUITE_MANIFEST = VALIDATION_DIR / "suite_manifest.json"
+    # Validation suite: 7 DFL + 2 Metrica games (uncontrolled-touch convention "events", WORKLOG_P2
+    # step 7) x 3 noise levels, leave-one-match-out folds.
+    DFL_MATCHES = ("J03WMX", "J03WN1", "J03WOH", "J03WOY", "J03WPY", "J03WQQ", "J03WR9")
+    SUITE_GAMES = tuple("dfl_" + m for m in DFL_MATCHES) + ("metrica1_events", "metrica2_events")
+    CLEAN_GAMES = SUITE_GAMES + ("metrica1_control", "metrica2_control")
+    LEVELS = ("light", "target", "heavy")
+    SEED = 0
 
 
 # =================================================================================================

@@ -186,27 +186,100 @@ def test_gt_csv_round_trip_and_hole_rejected():
         raise AssertionError("a missing frame was accepted")
 
 
+def _fake_copies(tmp, games, levels=("light", "heavy"), shifts=(0, 25)):
+    """Write GT CSVs and p_dead.npy for fake copies <game>__<level> under tmp; return suite-style entries."""
+    entries = []
+    for game in games:
+        for level, shift in zip(levels, shifts):
+            name = f"{game}__{level}"
+            gt_path = _write_gt(_gt(), tmp / f"{name}_gt.csv")
+            (tmp / "cache" / name).mkdir(parents=True)
+            np.save(tmp / "cache" / name / "p_dead.npy", _p(ev.shift_d(_gt(), shift)))
+            entries.append({"name": name, "source": game, "level": level, "fold": game, "gt": str(gt_path),
+                            "halves": [[0, 1]]})     # wrong on purpose: halves must never be read from here
+    return entries
+
+
 def test_manifest_end_to_end_two_providers():
     # the --all path on fake copies: 2 games x 2 noise copies, providers DFL and Metrica
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
-        rows = ["copy,gt,provider"]
-        for game, provider in (("g1", "DFL"), ("g2", "Metrica")):
-            gt_path = _write_gt(_gt(), tmp / f"{game}_gt.csv")
-            for k, shift in ((1, 0), (2, 25)):
-                copy = f"{game}_n{k}"
-                (tmp / "cache" / copy).mkdir(parents=True)
-                np.save(tmp / "cache" / copy / "p_dead.npy", _p(ev.shift_d(_gt(), shift)))
-                rows.append(f"{copy},{gt_path},{provider}")
+        entries = _fake_copies(tmp, ("g1", "g2"))
+        rows = ["copy,gt,provider"] + [f"{e['name']},{e['gt']},{'DFL' if e['source'] == 'g1' else 'Metrica'}"
+                                       for e in entries]
         (tmp / "manifest.csv").write_text("\n".join(rows) + "\n")
         s = ev.evaluate_manifest(tmp / "manifest.csv", cache_dir=tmp / "cache", out_dir=tmp / "reports")
-        assert s["n_copies"] == 4 and s["n_games"] == 2 and sorted(s["by_provider"]) == ["DFL", "Metrica"]
+        # a CSV list does not say which copies share a match: each GT file counts as one game here;
+        # only --suite (P2's manifest, field `source`) counts matches
+        assert s["n_copies"] == 4 and s["n_games"] == 4 and list(s["levels"]) == ["all"]
+        assert sorted(s["levels"]["all"]["by_provider"]) == ["DFL", "Metrica"]
         assert len(list((tmp / "reports").glob("*.json"))) == 4
-        row = ev.experiments_row(s, "test", date="2026-11-08")
-        header = Path(ev.config.REPO_ROOT / "experiments.csv").read_text().splitlines()[0]
-        import csv as _csv
-        parsed = next(_csv.reader([row]))
-        assert len(parsed) == len(header.split(",")) and parsed[1] == "P3a" and "alive_dead_f1=" in parsed[7]
+
+
+def test_provider_comes_from_p2_config():
+    # decision (a) of 2026-11-09: P2's own lists, never a guess from the name
+    from mtah import config
+    assert ev.provider_of("dfl_" + config.EXTERNAL.DFL_MATCHES[0]) == "DFL"
+    assert ev.provider_of("metrica1_events") == "Metrica"
+    for unknown in ("dfl_NOTAGAME", "statsbomb_x"):
+        try:
+            ev.provider_of(unknown)
+        except ValueError:
+            continue
+        raise AssertionError(f"{unknown!r} got a provider")
+
+
+def test_suite_scores_per_level_and_ignores_manifest_halves():
+    from mtah import config
+    dfl, met = "dfl_" + config.EXTERNAL.DFL_MATCHES[0], "metrica1_events"
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        entries = _fake_copies(tmp, (dfl, met))           # light = exact GT, heavy = 25 frames late
+        (tmp / "suite.json").write_text(json.dumps({"games": entries}))
+        rows = ev.read_suite(tmp / "suite.json")
+        assert {r["provider"] for r in rows} == {"DFL", "Metrica"}
+        s = ev.evaluate_rows(rows, cache_dir=tmp / "cache", out_dir=tmp / "reports")
+        assert list(s["levels"]) == ["heavy", "light"] and s["n_games"] == 2 and s["n_copies"] == 4
+        light, heavy = s["levels"]["light"], s["levels"]["heavy"]
+        assert light["alive_dead_f1"] == 1.0 and light["d_interval_f1"] == 1.0 and light["ece"] == 0.0
+        assert heavy["by_provider"]["DFL"]["onset"]["median"] == 25.0 and heavy["d_interval_f1"] < 1.0
+        only = ev.read_suite(tmp / "suite.json", levels=["heavy"])
+        assert [r["level"] for r in only] == ["heavy", "heavy"]
+
+
+def test_missing_p_dead_is_listed_before_scoring():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        entries = _fake_copies(tmp, ("metrica1_events",))
+        (tmp / "cache" / entries[1]["name"] / "p_dead.npy").unlink()
+        (tmp / "suite.json").write_text(json.dumps({"games": entries}))
+        try:
+            ev.evaluate_rows(ev.read_suite(tmp / "suite.json"), cache_dir=tmp / "cache", out_dir=tmp / "r")
+        except FileNotFoundError as err:
+            assert entries[1]["name"] in str(err) and entries[0]["name"] not in str(err)
+            assert not (tmp / "r").exists()                # nothing scored or written
+            return
+        raise AssertionError("missing p_dead.npy not reported")
+
+
+def test_experiments_row_uses_score_suite_layout():
+    # decision (b) of 2026-11-09: games = matches, noise_levels = level names, one block per level
+    import csv as _csv
+    from mtah import config
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        entries = _fake_copies(tmp, ("dfl_" + config.EXTERNAL.DFL_MATCHES[0], "metrica2_events"))
+        (tmp / "suite.json").write_text(json.dumps({"games": entries}))
+        s = ev.evaluate_rows(ev.read_suite(tmp / "suite.json"), cache_dir=tmp / "cache", out_dir=tmp / "r")
+        row = next(_csv.reader([ev.experiments_row(s, "v0 stub", date="2026-11-09")]))
+        header = (config.REPO_ROOT / "experiments.csv").read_text().splitlines()[0].split(",")
+        assert len(row) == len(header)
+        rec = dict(zip(header, row))
+        assert rec["owner"] == "P3a" and rec["spellF1_mean"] == "" and rec["macroF1_mean"] == ""
+        assert rec["games"] == "2" and rec["noise_levels"] == "heavy/light"
+        blocks = rec["notes"].split("; ")
+        assert blocks[0].startswith("heavy alive_dead_f1=") and blocks[1].startswith("light alive_dead_f1=1.000")
+        assert "DFL_onset_med=+25f" in blocks[0] and "Metrica_onset_med=+0f" in blocks[1]
 
 
 def test_manifest_with_wrong_columns_is_rejected():

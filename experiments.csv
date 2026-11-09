@@ -1,1 +1,2 @@
 date,owner,change,spellF1_mean,macroF1_mean,games,noise_levels,notes
+2026-11-09,P3a,v0 stub: dead where ball missing >= 3 s,,,9,heavy/light/target,heavy alive_dead_f1=0.661 dint_f1=0.265 ece=0.367 DFL_onset_med=+71f DFL_end_med=+53f Metrica_onset_med=+79f Metrica_end_med=+69f; light alive_dead_f1=0.711 dint_f1=0.168 ece=0.378 DFL_onset_med=+116f DFL_end_med=-9f Metrica_onset_med=+124f Metrica_end_med=-19f; target alive_dead_f1=0.704 dint_f1=0.246 ece=0.353 DFL_onset_med=+88f DFL_end_med=+26f Metrica_onset_med=+96f Metrica_end_med=+69f
