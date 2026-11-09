@@ -63,7 +63,7 @@ look at per-game numbers too.
   (`[first, stop)`, as `mtah.schema.Game` and the official scorer), while each game's `meta.json`
   writes them end-inclusive (`[first, last]`, guide §5). Example, `dfl_J03WMX__heavy`: manifest
   `[0, 70708]` = meta.json `[0, 70707]`. Read halves from `meta.json` (`mtah.data.load`); don't mix
-  the two. (Added by Cristiana, P3a, 2026-11-09.)
+  the two.
 
 ## Rebuild everything (public data only)
 
