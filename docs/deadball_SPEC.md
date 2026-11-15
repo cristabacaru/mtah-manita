@@ -92,7 +92,13 @@ Evidence on BAR–ATH (aggregates only):
 - Parameters: `L2` (1.0), `EPS` (1e-3), `TRAIN_GAMES` (all in `data/validation/`).
 - Rows: graded frames of degraded external games. Label = provider D flag (DFL `BallStatus`; Metrica GT `D`).
 - Fitting is leave-one-match-out (guide `:228`).
-- **v0 stub** until external games exist: `p_dead = clip(gap length ≥ 3 s)`, on the raw length (`STUB_GAP_S`), not on the log `gap_len_s` (`README.md:96-97`).
+- **v0 stub** until external games exist: `p_dead = clip(gap length ≥ 3 s)`, on the raw length (`STUB_GAP_S`), not on the log `gap_len_s` (`README.md:96-97`). Still available as `combine.py --stub`.
+- **Built 2026-11-15** (step 6, by Alexia with Cristiana's agreement): `combine.py` default. NaN → training median,
+  standardised, objective = sum of log-losses + `L2`/2·|w|² (bias not penalised), L-BFGS-B. Trained on all three noise
+  levels of every suite game; `--game` never trains on the game itself; `--suite` writes leave-one-match-out p_dead.
+  Suite, mean over 9 games (v0 stub → logistic, `target`): alive_dead_f1 0.704 → 0.876, D-interval F1 0.246 → 0.434,
+  ECE 0.353 → 0.034; median onset offset DFL +88 → +21 frames, Metrica +96 → +1 (experiments.csv 2026-11-15).
+  Bootstrap intervals are not built yet (decision (b)), so "no bootstrap overlap" (§4) is not checked.
 
 ## 4. Evaluation (`mtah/deadball/evaluate.py`) and "done when"
 
