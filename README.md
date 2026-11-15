@@ -46,14 +46,14 @@ mtah/                     OUR PIPELINE (all new work goes here)
 ├─ config.py              every setting and seed                                P1
 ├─ data.py                ATD -> shared-schema .npy arrays (guide section 5)     P1
 ├─ evaluate.py            score(labels, gt) wrapper, experiments.csv logging     P1 (planned)
-├─ submit.py              writes Manita.csv (X outside graded halves) + sha256   P1 (planned)
+├─ submit.py              writes Manita.csv (X outside graded halves) + sha256   P1
 ├─ external/              DFL/IDSSE + Metrica loaders, suite, export (README)    P2 Theo
 ├─ simulate.py            ball-gap / noise simulator calibrated to BAR-ATH        P2 Theo
 ├─ schema.py              internal Game container of mtah/external/              P2 Theo
 ├─ deadball/              dead-ball module                                       P3
 │  ├─ signals.py          ball-gap + motion-collapse signals (all frames)        P3a Cristiana (planned)
 │  ├─ lines.py            ball distance past / to the touchline and goal line    P3a Cristiana (planned)
-│  ├─ combine.py          all evidence -> final p_dead[t] (v0 placeholder today)  P3a Cristiana
+│  ├─ combine.py          all evidence -> final p_dead[t] (logistic combiner)      P3a Cristiana
 │  ├─ evaluate.py         D-interval F1 + boundary offset on external games      P3a Cristiana (planned)
 │  ├─ tags.py             Smart Tagging -> tags.json (frames, type, H/A team)    P3b Alexia
 │  └─ restarts.py         kick-off + restart detection, restart team -> anchors  P3b Alexia
@@ -184,6 +184,12 @@ python evaluation/validate_submission.py Manita.csv
 shasum -a 256 Manita.csv                         # run twice: hashes must match
 git ls-files | grep '^data/'                          # only data/README.md
 ```
+The last stage, `python -m mtah.submit`, already refuses any X inside a half, forces X outside them,
+writes `Manita.csv.sha256` and runs the official validator; it exits with 1 if anything is wrong.
+Fallback if the pipeline cannot finish: `python -m mtah.submit --labels <any labels.npy or frame,label
+.csv>`, e.g. the official baseline (`python starter/baseline.py --window 50 --out /tmp/mtah`, then
+`--labels /tmp/mtah/baseline_smooth50.csv`).
+
 Submit through the official Google form, one response per team (the last one before the deadline
 counts). You need:
 - the team name;
