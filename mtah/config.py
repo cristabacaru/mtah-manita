@@ -196,6 +196,9 @@ class RESTARTS:
     KICKOFF_MAX_VIOLATORS = 2
     KICKOFF_MIN_PLAYERS = 16
     KICKOFF_HOLD_S = 2.0
+    # evaluate_restarts.py: an anchor matches a true D -> H/A change within this many seconds. Strict
+    # = the anchors' own WINDOW_S. Loose, because providers differ on when "dead" ends. [choice]
+    EVAL_TOL_S = (1.0, 3.0)
 
 
 # =================================================================================================
