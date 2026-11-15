@@ -122,6 +122,33 @@ Logs go to `$MTAH_CACHE/logs/`.
 The stage list (module name, arguments, outputs) is at the top of `run.sh`. If your module name
 or outputs differ, change that one line in the same commit.
 
+### P5 decoder and tuning
+
+`python -m mtah.decode --game BAR-ATH` reads `p_dead.npy`, `p_home.npy`, `tags.json`,
+`anchors.json`, and `meta.json` from `$MTAH_CACHE/BAR-ATH/`, decodes each half independently,
+and writes `labels.npy`. P3/P4 outputs must be probabilities in `[0, 1]`; `p_home` means
+`P(home possession | play is alive)`. Decoder defaults live in `mtah/config.py` under
+`DECODER`; emission scale, switching costs, and duration limits can be overridden with the
+command-line options shown by `--help`.
+
+The decoder unit functions accept an `(n, 3)` log-probability array in H/A/D order. The integrated
+`decode_probabilities` function converts the two teammate probability arrays, applies minimum
+durations, makes D-to-live transitions cheaper near restart anchors and `SET PIECES` tags, snaps
+nearby D-to-live boundaries to confident anchors, and removes only short H/A flickers bracketed
+by the same team. Frames outside the inclusive half ranges in `meta.json` are labelled `X`.
+
+To tune parameters, first generate the external validation suite and ensure each selected copy has
+exported `p_dead.npy` and `p_home.npy` in `$MTAH_CACHE/<copy>/`:
+
+```bash
+python -m mtah.optuna_tune --trials 50
+python -m mtah.optuna_tune --trials 50 --levels target
+```
+
+The tuner reads only the external suite manifest and GT files, maximizes the mean official
+spell-F1, and saves the best parameters under `$MTAH_CACHE/reports/`. It does not tune on the
+public five-minute GT. It cannot run until P4's probabilities exist for the external copies.
+
 ---
 
 ## Day-to-day usage
@@ -178,5 +205,3 @@ You need a Google account to upload. There is no leaderboard and no feedback bef
 | P3b: Restarts, Smart Tagging, anchors | Alexia |
 | P4: Team-possession model | Bianca |
 | P5: Decoder, tuning and error analysis | Andra |
-
-

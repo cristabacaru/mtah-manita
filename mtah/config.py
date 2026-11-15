@@ -209,7 +209,15 @@ class POSSESSION:
 # P5 decoder and tuning (Andra)
 # =================================================================================================
 class DECODER:
-    pass
+    EMISSION_SCALE = 0.1
+    SWITCH_TEAM = 12.0
+    SWITCH_DEAD = 10.0
+    MIN_LIVE_S = 0.48
+    MIN_DEAD_S = 2.0
+    ANCHOR_BONUS = 8.0
+    TAG_BONUS = 4.0
+    SNAP_MIN_CONFIDENCE = 0.6       # excludes low-confidence "unknown" restart anchors
+    SHORT_LIVE_SPELL_S = 0.6        # merge only same-team-bracketed H/A flickers
 
 
 # =================================================================================================
