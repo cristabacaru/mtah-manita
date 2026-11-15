@@ -85,7 +85,7 @@ exact same shape and schema as the target game, so every module runs on both unc
 | Producer | Output (in `$MTAH_CACHE/<game>/`) | Meaning | Consumers |
 |---|---|---|---|
 | P3a `deadball/combine.py` | `p_dead.npy`, shape `(n,)`, float in [0, 1] | probability the ball is dead | P5 |
-| P3b `deadball/restarts.py` | `anchors.json`: list of `{frame, window, type, team, confidence, half, source, slow_before, ball_played}` | restarts detected from tracking only (any game): frame = the ball is played; type kickoff / throw_in / corner / goal_kick / unknown; confidence is a heuristic score (recognised 0.75–1, unknown 0.25–0.5). Format and option B in `mtah/deadball/restarts.py` | P5 |
+| P3b `deadball/restarts.py` | `anchors.json`: list of `{frame, window, type, team, confidence, half, source, slow_before, ball_played}` | restarts detected from tracking only (any game): frame = the ball is played; type kickoff / throw_in / corner / goal_kick / unknown; confidence = the share of that evidence group that was real on P2's suite (0.86 / 0.37 / 0.27; weak groups dropped). Format and option B in `mtah/deadball/restarts.py` | P5 |
 | P3b `deadball/tags.py` | `tags.json`: list of `{start_frame, end_frame, code, type, team, possession_team, half}`, end exclusive | every Smart Tagging instance on video frames, team as `H`/`A`/null (BAR–ATH only; format in `mtah/deadball/tags.py`) | P5 |
 | P4 `model.py` | `p_home.npy`, shape `(n,)`, float in [0, 1] | P(home in possession \| ball alive) | P5 |
 | P5 `decode.py` | `labels.npy`, shape `(n,)`, values `H`/`A`/`D` | final labels | `submit.py` |

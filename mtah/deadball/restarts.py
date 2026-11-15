@@ -16,7 +16,8 @@ Output: $MTAH_CACHE/<game>/anchors.json, a list sorted by frame:
      "window": [lo, hi],           half-open, frame +/- RESTARTS.WINDOW_S, clipped to the half
      "type": "kickoff" | "throw_in" | "corner" | "goal_kick" | "unknown",
      "team": "H" | "A" | null,     the restarting team
-     "confidence": float,          0.25-1.0, a heuristic score, NOT a calibrated probability
+     "confidence": float,          0.86 / 0.37 / 0.27: share of anchors of the same evidence group
+                                   that were real on P2's suite (v2, RESTARTS.CONFIDENCE)
      "half": int,                  1-based; anchors exist only inside the halves
      "source": "gap_end" | "still_ball" | "kickoff_formation",
      "slow_before": bool,          players' mean speed < SLOW_MPS over SLOW_BEFORE_S before the candidate
@@ -25,8 +26,7 @@ Output: $MTAH_CACHE/<game>/anchors.json, a list sorted by frame:
 How (all per half, guide section 5 feature conventions; H attacks towards x = L):
 1. Candidates, three independent templates (research/checks/c5_restarts.py):
    - gap_end: the ball reappears after being missing >= GAP_MIN_S;
-   - still_ball: the ball starts moving after being still >= STILL_MIN_S, the players were slow
-     before (slow_before) and the ball is at a restart spot (type not "unknown");
+   - still_ball: the ball starts moving after being still >= STILL_MIN_S;
    - kickoff_formation: both teams in their own half, ball at the centre spot, players slow, held
      >= KICKOFF_HOLD_S, then movement.
 2. Restart frame: the smoothed ball speed first passes BALL_PLAYED_MPS within SEARCH_S; the frame is
@@ -35,10 +35,19 @@ How (all per half, guide section 5 feature conventions; H attacks towards x = L)
 3. Type from where the ball is at that frame (corner arc, touchline, goal area, centre spot).
 4. Team: corners and goal kicks from the Laws (H attacks x = L, so a corner at the x = L end is H's and
    a goal kick from the x = 0 goal area is H's); otherwise the team of the player nearest the ball.
-5. Confidence: recognised type 0.75 + 0.125 * (slow_before + ball_played), so 0.75-1.0; "unknown"
-   0.25 + 0.125 * (slow_before + ball_played), so 0.25-0.5. Every recognised anchor ranks above every
-   unknown one. Heuristic, not calibrated: filter with mask(..., min_confidence=...).
+5. Confidence (v2) from the evidence group (type recognised, slow_before, ball_played), looked up in
+   RESTARTS.CONFIDENCE. Groups not in the table are dropped, and so are still-ball candidates without
+   slow_before or of unknown type (option B); detect(drop_weak=False) keeps them all, for evaluation.
 6. Candidates closer than MERGE_S are one restart; the highest confidence wins.
+
+Why v2 (decision 2026-11-15; evidence: python -m mtah.deadball.evaluate_restarts --suite, P2's 9
+external games x target/heavy, experiments.csv 2026-11-15). Share of final v1 anchors within 1 s of a
+true D -> H/A change (chance 3.6 %), by (type recognised, slow_before, ball_played):
+  recognised, slow, played 86 % (453 anchors)   unknown, slow, played 37 % (278)
+  recognised, not slow, played 27 % (77)        every group without ball_played 0-3 %
+  unknown, not slow, played 2 % (1198)
+v1 ranked the type first (recognised 0.75-1.0, unknown 0.25-0.5), so 1.5 %-real anchors scored 0.875
+and 37 %-real ones 0.5: the order was wrong. The confidence is now the measured share itself.
 
 Why option B (decision 2026-11-08; evidence from research/checks/c9_restarts_vs_tags.py, BAR-ATH):
 Smart Tagging is not a full answer key (59 tagged set pieces, a match has about 110 restarts), but how
@@ -201,10 +210,9 @@ def _anchor(start, source, ball, bspeed, pxy, team, mean_speed, pitch, fps, firs
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         slow = bool(np.isfinite(before).any() and np.nanmean(before) < R.SLOW_MPS)
-    # Option B (2026-11-08): a recognised type is the strongest evidence, so every recognised anchor
-    # scores above every unknown one; slow_before and ball_played add within the band.
-    base = R.CONF_UNKNOWN if kind == "unknown" else R.CONF_KNOWN
-    confidence = base + R.CONF_STEP * (slow + played)
+    # v2 (2026-11-15): the measured hit rate of this evidence group on P2's suite; 0 = a group that hits
+    # about chance, dropped by detect() unless drop_weak=False.
+    confidence = R.CONFIDENCE.get((kind != "unknown", slow, played), 0.0)
     return {"frame": first_frame + frame, "type": kind, "team": team_out,
             "confidence": round(float(confidence), 4), "source": source,
             "slow_before": slow, "ball_played": played}
@@ -222,10 +230,20 @@ def _merge(cands: list[dict], fps: float) -> list[dict]:
     return [min(g, key=best) for g in groups]
 
 
-def detect(game: Mapping, filter_still: bool = True) -> list[dict]:
+def _strong(a: dict) -> bool:
+    """Kept by detect(): an evidence group that beats chance on P2's suite (confidence > 0, v2), and for
+    a still ball also slow_before and a recognised type (option B: otherwise a player holding the ball
+    in live play). The v2 shares were measured with that still-ball rule in place."""
+    if a["source"] == "still_ball" and not (a["slow_before"] and a["type"] != "unknown"):
+        return False
+    return a["confidence"] > 0
+
+
+def detect(game: Mapping, drop_weak: bool = True) -> list[dict]:
     """Anchors for one game in the shared schema (mtah.data.load), any game.
 
-    filter_still=False keeps every still_ball candidate, for research/checks/c9 only.
+    drop_weak=False keeps every candidate (the weak ones with confidence 0), for the evaluation and
+    research/checks/c9 only; the decoder always gets the default.
     """
     check_game(game, need=("ball_xy", "players_xy", "players_speed"))
     meta = game["meta"]
@@ -240,17 +258,13 @@ def detect(game: Mapping, filter_still: bool = True) -> list[dict]:
         bspeed = _ball_speed(ball, fps)
         visible = np.isfinite(ball).all(axis=1)
         args = (ball, bspeed, pxy, team, mean_speed, pitch, fps, h.start)
-        # Option B (2026-11-08, research/checks/c9_restarts_vs_tags.py): a still ball counts only if
-        # play had stopped (slow_before) AND it sits at a restart spot (type recognised). Otherwise it is
-        # near a tagged set piece no more often than chance: a player holding the ball in live play.
-        # gap_end unknowns are kept (R3): a >= GAP_MIN_S gap is itself a stoppage.
-        still = [a for a in (_anchor(s, "still_ball", *args) for s in _still_ball_starts(ball, fps))
-                 if a is not None and (not filter_still or (a["slow_before"] and a["type"] != "unknown"))]
         cands = ([_anchor(s, "gap_end", *args) for s in _gap_end_starts(visible, fps)]
-                 + still
+                 + [_anchor(s, "still_ball", *args) for s in _still_ball_starts(ball, fps)]
                  + [_anchor(s, "kickoff_formation", *args)
                     for s in _kickoff_starts(ball, pxy, team, mean_speed, pitch, fps)])
         cands = [a for a in cands if a is not None]
+        if drop_weak:
+            cands = [a for a in cands if _strong(a)]
         for a in _merge(cands, fps):
             a["window"] = [max(h.start, a["frame"] - w), min(h.stop, a["frame"] + w + 1)]
             a["half"] = number

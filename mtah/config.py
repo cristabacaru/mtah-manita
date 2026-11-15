@@ -178,12 +178,17 @@ class RESTARTS:
     SLOW_BEFORE_S = 2.0         # ... measured over this long before the candidate starts
     MERGE_S = 3.0               # candidates closer than this are one restart
     WINDOW_S = 1.0              # anchors.json window: frame +/- this, the decoder's tolerance
-    # Confidence bands (option B, 2026-11-08): recognised type 0.75-1.0, "unknown" 0.25-0.5, each cue
-    # (slow_before, ball_played) adds CONF_STEP. Still-ball candidates of unknown type are dropped.
-    # Evidence: research/checks/c9_restarts_vs_tags.py.
-    CONF_KNOWN = 0.75
-    CONF_UNKNOWN = 0.25
-    CONF_STEP = 0.125
+    # Confidence v2 (2026-11-15): the measured hit rate of each evidence group on P2's suite (share
+    # of anchors within 1 s of a true D -> H/A change, target + heavy pooled, 9 games; chance 3.6 %):
+    # (type recognised, slow_before, ball_played) -> confidence. Groups not listed hit 0-3 %, about
+    # chance, and are dropped. Evidence: mtah/deadball/evaluate_restarts.py, experiments.csv 2026-11-15.
+    # Still-ball candidates still need slow_before and a recognised type (option B, 2026-11-08): the
+    # shares were measured with that rule in place.
+    CONFIDENCE = {
+        (True, True, True): 0.86,     # 391 / 453
+        (False, True, True): 0.37,    # 103 / 278
+        (True, False, True): 0.27,    # 21 / 77
+    }
     # Restart zones, Laws of the Game (corner arc 1 m, goal area 5.5 m x 18.32 m) plus c5's margins
     # for tracking noise.
     CORNER_R_M = 3.0

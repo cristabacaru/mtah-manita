@@ -79,7 +79,7 @@ def test_gap_end_throw_in():
     assert len(a) == 1, a
     a = a[0]
     assert a["frame"] == 300 and a["type"] == "throw_in" and a["team"] == "H"
-    assert a["slow_before"] and a["ball_played"] and a["confidence"] == 1.0
+    assert a["slow_before"] and a["ball_played"] and a["confidence"] == R.CONFIDENCE[(True, True, True)]
     assert a["half"] == 1 and a["window"] == [275, 326]
 
 
@@ -94,7 +94,7 @@ def test_restart_frame_is_when_ball_is_played():
 def test_still_ball_unknown_is_dropped_known_is_kept():
     mid = kick_from(game(), 300, at=(40.0, 30.0))                       # still mid-pitch, then kicked
     assert not [x for x in Rm.detect(mid) if x["source"] == "still_ball"]
-    assert [x for x in Rm.detect(mid, filter_still=False) if x["source"] == "still_ball"]
+    assert [x for x in Rm.detect(mid, drop_weak=False) if x["source"] == "still_ball"]
     line = kick_from(game(), 300, at=(40.0, 0.5), velocity=(0.0, 12.0))
     kept = [x for x in Rm.detect(line) if x["source"] == "still_ball"]
     assert kept and kept[0]["type"] == "throw_in"
@@ -105,13 +105,40 @@ def test_still_ball_needs_players_slow_before():
     assert not [x for x in Rm.detect(fast) if x["source"] == "still_ball"]
 
 
-def test_confidence_bands():
-    g = kick_from(game(slow=False), 300, at=(40.0, 30.0))
-    g["ball_xy"][200:300] = np.nan                                      # unknown spot, players fast
+def test_confidence_is_the_evidence_group_table():
+    # recognised + slow + played
+    g = kick_from(game(), 300, at=(40.0, 0.5), velocity=(0.0, 12.0))
+    g["ball_xy"][200:300] = np.nan
     a = [x for x in Rm.detect(g) if x["source"] == "gap_end"][0]
-    assert a["type"] == "unknown" and a["confidence"] == R.CONF_UNKNOWN + R.CONF_STEP   # ball_played only
+    assert a["confidence"] == R.CONFIDENCE[(True, True, True)]
+    # unknown spot + slow + played
+    g = kick_from(game(), 300, at=(40.0, 30.0))
+    g["ball_xy"][200:300] = np.nan
+    a = [x for x in Rm.detect(g) if x["source"] == "gap_end"][0]
+    assert a["type"] == "unknown" and a["confidence"] == R.CONFIDENCE[(False, True, True)]
+    # recognised + not slow + played
+    g = kick_from(game(slow=False), 300, at=(40.0, 0.5), velocity=(0.0, 12.0))
+    g["ball_xy"][200:300] = np.nan
+    a = [x for x in Rm.detect(g) if x["source"] == "gap_end"][0]
+    assert a["confidence"] == R.CONFIDENCE[(True, False, True)]
+
+
+def test_weak_groups_are_dropped_but_kept_with_drop_weak_false():
+    # unknown spot, players fast: hits about chance on P2's suite -> dropped
+    g = kick_from(game(slow=False), 300, at=(40.0, 30.0))
+    g["ball_xy"][200:300] = np.nan
+    assert not [x for x in Rm.detect(g) if x["source"] == "gap_end"]
+    kept = [x for x in Rm.detect(g, drop_weak=False) if x["source"] == "gap_end"]
+    assert kept and kept[0]["confidence"] == 0
+    # the ball never moves after reappearing: no ball_played -> dropped
+    g = game()
+    g["ball_xy"][:] = [40.0, 0.5]
+    g["ball_xy"][200:300] = np.nan
+    assert not Rm.detect(g)
+    assert all(x["confidence"] == 0 for x in Rm.detect(g, drop_weak=False))
+    # every kept anchor has a listed confidence
     for x in Rm.detect(kick_from(game(), 300, at=(40.0, 0.5), velocity=(0.0, 12.0))):
-        assert (x["confidence"] >= R.CONF_KNOWN) == (x["type"] != "unknown")
+        assert x["confidence"] in R.CONFIDENCE.values()
 
 
 def test_kickoff_formation():

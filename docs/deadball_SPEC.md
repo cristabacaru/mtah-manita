@@ -46,7 +46,7 @@ Rules on the input:
 
 **P3b formats.** Current proposals (`README.md:87-88`); Alexia owns them and `p_dead` reads neither. See §6.
 - `anchors.json` (**decided 2026-11-08**, written by `mtah/deadball/restarts.py`, format in its docstring):
-  `[{"frame", "window": [lo, hi), "type": kickoff|throw_in|corner|goal_kick|unknown, "team": "H"|"A"|null, "confidence": 0.25–1.0, "half", "source", "slow_before", "ball_played"}]`, tracking only, any game
+  `[{"frame", "window": [lo, hi), "type": kickoff|throw_in|corner|goal_kick|unknown, "team": "H"|"A"|null, "confidence": 0.86 | 0.37 | 0.27 (v2, measured on P2's suite), "half", "source", "slow_before", "ball_played"}]`, tracking only, any game
 - `tags.json` (**decided 2026-11-07**, written by `mtah/deadball/tags.py`, format in its docstring):
   `[{"start_frame", "end_frame" (exclusive), "code", "type" | null, "team": "H"|"A"|null, "possession_team": "H"|"A"|null, "half": int|null}]`, all 638 instances
 

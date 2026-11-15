@@ -85,7 +85,7 @@ def test_end_to_end_on_a_synthetic_game():
     g["ball_xy"][200:300] = np.nan
     g["players_xy"][:, 0] = [40.0, 1.0]
     c = codes_of((100, 300, D), (300, 450, H), (550, 900, H))
-    r = E.score_game(restarts.detect(g), restarts.detect(g, filter_still=False), c, 25)
+    r = E.score_game(restarts.detect(g), restarts.detect(g, drop_weak=False), c, 25)
     assert r["n_true"] == 1 and r["by_tol"][1.0]["recall"] == 1 and r["offsets"] == [0]
     s = E.summarise_level([r])
     assert s["team_accuracy"] == 1.0 and s["n_games"] == 1

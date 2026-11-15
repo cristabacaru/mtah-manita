@@ -46,9 +46,9 @@ def table(anchors, title):
 
 
 print(f"set pieces tagged: {len(set_pieces)}; graded frames within +/-{MARGIN_S} s of one: {chance:.1%}")
-table(restarts.detect(game, filter_still=False), "all candidates (no still-ball filter)")
+table(restarts.detect(game, drop_weak=False), "all candidates (drop_weak=False)")
 final = restarts.detect(game)
-table(final, "final anchors (option B)")
+table(final, "final anchors (v2)")
 
 near = lambda e: [a for a in final if e["start_frame"] - margin <= a["frame"] < e["end_frame"] + margin]
 print(f"\ntagged set pieces with a final anchor nearby: {sum(bool(near(e)) for e in set_pieces)} / {len(set_pieces)}")

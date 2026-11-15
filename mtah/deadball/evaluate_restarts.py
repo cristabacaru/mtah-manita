@@ -9,7 +9,7 @@ with those frames:
 - offset: anchor frame minus true frame, in frames (late = positive), on the loose matches;
 - team: the anchor's team against the label of the true restart, on the loose matches;
 - by template: per (source, type), the share of anchors within the tolerance of ANY true restart,
-  against the share of graded frames that are (chance). Run with filter_still=False, so the still-ball
+  against the share of graded frames that are (chance). Run with drop_weak=False, so the still-ball
   candidates option B drops are measured too.
 
 Limits. The GT has only H/A/D, so restart TYPES cannot be scored, only when and who. Ball dropout on
@@ -66,7 +66,7 @@ def _near_mask(frames, n: int, tol: int) -> np.ndarray:
 
 
 def score_game(anchors: list[dict], candidates: list[dict], codes: np.ndarray, fps: float) -> dict:
-    """Counts for one game. `anchors` is the final output, `candidates` detect(filter_still=False)."""
+    """Counts for one game. `anchors` is the final output, `candidates` detect(drop_weak=False)."""
     truth = true_restarts(codes)
     frames = [a["frame"] for a in anchors]
     true_frames = [t[0] for t in truth]
@@ -139,7 +139,7 @@ def evaluate_rows(rows: list[dict], load_game=None) -> dict:
         codes = read_gt(row["gt"])
         if len(codes) != int(game["meta"]["n_frames"]):
             raise ValueError(f"{row['copy']}: GT has {len(codes)} frames, the game {game['meta']['n_frames']}")
-        report = score_game(restarts.detect(game), restarts.detect(game, filter_still=False), codes,
+        report = score_game(restarts.detect(game), restarts.detect(game, drop_weak=False), codes,
                             float(game["meta"]["fps"]))
         levels.setdefault(row["level"], []).append(report)
     return {"n_games": len({r["source"] for r in rows}),
