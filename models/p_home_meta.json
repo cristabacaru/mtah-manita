@@ -1,5 +1,5 @@
 {
- "calibration_sha256": "a6d4b69ab28c041dcb2e5c0e3e1f9b6e99028a8659ca2edca99255f148e4e000",
+ "calibration_sha256": "07e35e945ceaf6cbb24162a2d47fe715abb1d16d52a15b117a8c58384cdc5d95",
  "games": [
   "dfl_J03WMX__light",
   "dfl_J03WMX__target",
@@ -29,11 +29,12 @@
   "metrica2_events__target",
   "metrica2_events__heavy"
  ],
- "model_sha256": "94bb4766a932b33867bc3527dfe5ce22f305a98662fcb312b592bc6d3f0e2663",
+ "model_sha256": "e4f9c1864251c44619ac516bdfcb1b4dec2bed1d4433f9146f6af2bdce8a008b",
  "settings": {
   "BRIDGE_MAX_S": 4.0,
   "CALIBRATE": true,
   "CONTEXT_S": [
+   0.5,
    1.0,
    3.0
   ],
@@ -66,8 +67,15 @@
   "N_ROUNDS": 400,
   "SEED": 0,
   "SHAPE_VEL_S": 1.0,
+  "SHORT_SPELL_S": 3.0,
+  "SHORT_SPELL_WEIGHT": 3.0,
+  "TOUCH_DIST_M": 2.0,
+  "TOUCH_DV_MPS": 3.0,
+  "TOUCH_HALF_WINDOW_S": 0.12,
   "TRAIN_STRIDE": 5,
   "TTA": true,
+  "TURNOVER_WEIGHT": 3.0,
+  "TURNOVER_WINDOW_S": 1.0,
   "V0_CONF": 0.8,
   "VEL_HALF_WINDOW_S": 0.2
  },

@@ -152,6 +152,36 @@ def test_deterministic():
     assert np.array_equal(a, b, equal_nan=True)
 
 
+def test_touch_detected_on_a_kick():
+    """Ball rolls at 2 m/s, an A player at the ball kicks it to 15 m/s: one A touch at the kick."""
+    n, kick = 300, 150
+    t = np.arange(n) / FPS
+    x = np.where(np.arange(n) < kick, 20 + 2 * t, 20 + 2 * t[kick] + 15 * (t - t[kick]))
+    bxy = np.column_stack([x, np.full(n, 30.0)])
+    pxy = np.full((n, 2, 2), np.nan)
+    pxy[:, 0] = [x[kick], 30.5]                        # A player standing where the kick happens
+    pxy[:, 1] = [x[kick] - 30, 40.0]                   # H player far away
+    game = {"ball_xy": bxy, "players_xy": pxy, "players_speed": np.zeros((n, 2)),
+            "players_team": np.array(["A", "H"]),
+            "meta": {"fps": FPS, "n_frames": n, "halves": [[0, n - 1]], "pitch": [L, W]}}
+    touch = features._frame_quantities(game)["touch"]
+    hits = np.flatnonzero(touch != 0)
+    assert len(hits) == 1 and touch[hits[0]] == -1 and abs(hits[0] - kick) <= 3, hits
+    X, names = features.compute(game)
+    assert X[kick + 20, names.index("touch_last")] == -1
+    Xm, _ = features.compute(features.mirror(game))
+    assert Xm[kick + 20, names.index("touch_last")] == 1     # A's touch is H's touch in the mirror
+
+
+def test_frame_weights():
+    fps = 25
+    lab = np.array(["H"] * 100 + ["A"] * 30 + ["H"] * 100 + ["D"] * 50 + ["A"] * 200)
+    w = model.frame_weights(lab, fps)
+    assert w[0] == 1 and w[99] == POSSESSION.TURNOVER_WEIGHT          # 1 s before a turnover
+    assert w[115] == max(POSSESSION.TURNOVER_WEIGHT, POSSESSION.SHORT_SPELL_WEIGHT)  # 1.2 s spell
+    assert w[230] == 1 and w[400] == 1                                 # D -> A is not a direct turnover
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

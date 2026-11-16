@@ -179,16 +179,40 @@ def _frame_quantities(game: Mapping, b: dict | None = None) -> dict:
 
     ctrl = ctrl_of(d_h, d_a, rel_h).astype(np.float64) - ctrl_of(d_a, d_h, rel_a)
     ctrl[~ball_ok] = 0.0
+    dv, touch = _touches(b["vel"], d_h, d_a, fps)
     return {"d_h": d_h, "d_a": d_a, "rel_h": rel_h, "rel_a": rel_a, "ctrl": ctrl, **near,
+            "dv": dv, "touch": touch,
             "shape_h": _team_shape(pxy[..., 0], pxy[..., 1], is_h),
             "shape_a": _team_shape(pxy[..., 0], pxy[..., 1], is_a)}
 
 
-GROUPS = ("proximity", "control", "shape", "gap")
+def _touches(vel: np.ndarray, d_h: np.ndarray, d_a: np.ndarray, fps: float) -> tuple[np.ndarray, np.ndarray]:
+    """(dv, touch): dv = |v_ball(t + k) - v_ball(t - k)| in m/s; touch = +1 / -1 where dv has a local
+    peak above TOUCH_DV_MPS and the nearest player (H or A) is within TOUCH_DIST_M, 0 elsewhere.
+
+    A pass, an interception or a deflection changes the ball's velocity next to the player who
+    touched it; the control rule needs the player to move with the ball and misses single touches.
+    """
+    k = max(1, int(round(POSSESSION.TOUCH_HALF_WINDOW_S * fps)))
+    dv = np.full(len(vel), np.nan)
+    if len(vel) > 2 * k:
+        dv[k:-k] = np.hypot(*(vel[2 * k:] - vel[:-2 * k]).T)
+    z = np.nan_to_num(dv, nan=-1.0)                      # NaN never peaks
+    peak = np.zeros(len(dv), dtype=bool)
+    peak[1:-1] = (z[1:-1] >= z[:-2]) & (z[1:-1] > z[2:]) & (z[1:-1] > POSSESSION.TOUCH_DV_MPS)
+    dh, da = np.nan_to_num(d_h, nan=np.inf), np.nan_to_num(d_a, nan=np.inf)
+    near = np.minimum(dh, da) < POSSESSION.TOUCH_DIST_M
+    touch = np.where(peak & near, np.where(dh <= da, 1.0, -1.0), 0.0)
+    return dv, touch
+
+
+GROUPS = ("proximity", "control", "shape", "gap", "touch")
 
 
 def group_of(name: str) -> str:
     """Feature group of a column (module docstring, 1-3; gap = ball-missing context), for ablations."""
+    if name.startswith("touch_"):
+        return "touch"
     if name.startswith(("ctrl_", "ddiff_")):
         return "control"
     if name.startswith(("cx_", "cy_", "sdx_", "sdy_", "n_tracked_", "vcx_", "sd_area")):
@@ -234,9 +258,12 @@ def compute(game: Mapping) -> tuple[np.ndarray, list[str]]:
     cols["t_until_seen_s"] = signals.t_until_seen_s(game)
 
     # 2. control + time context, per half
-    timed = ["ctrl_last", "ctrl_last_s", "ctrl_next", "ctrl_next_s", "vcx_h", "vcx_a"]
+    timed = ["ctrl_last", "ctrl_last_s", "ctrl_next", "ctrl_next_s", "vcx_h", "vcx_a",
+             "touch_last", "touch_last_s", "touch_next", "touch_next_s"]
     for w in POSSESSION.CONTEXT_S:
-        timed += [f"ctrl_past_{w:g}s", f"ctrl_fut_{w:g}s", f"ddiff_past_{w:g}s", f"ddiff_fut_{w:g}s"]
+        timed += [f"ctrl_past_{w:g}s", f"ctrl_fut_{w:g}s", f"ddiff_past_{w:g}s", f"ddiff_fut_{w:g}s",
+                  f"touch_past_{w:g}s", f"touch_fut_{w:g}s"]
+    cols["touch_dv"] = q["dv"]
     for name in timed:
         cols[name] = np.full(n, np.nan)
     kv = max(1, int(round(POSSESSION.SHAPE_VEL_S * fps)))
@@ -246,6 +273,11 @@ def compute(game: Mapping) -> tuple[np.ndarray, list[str]]:
         nxt, until = _last_event(ctrl[::-1])
         cols["ctrl_last"][half], cols["ctrl_last_s"][half] = last, np.log1p(since / fps)
         cols["ctrl_next"][half], cols["ctrl_next_s"][half] = nxt[::-1], np.log1p(until[::-1] / fps)
+        touch = q["touch"][half]
+        last, since = _last_event(touch)
+        nxt, until = _last_event(touch[::-1])
+        cols["touch_last"][half], cols["touch_last_s"][half] = last, np.log1p(since / fps)
+        cols["touch_next"][half], cols["touch_next_s"][half] = nxt[::-1], np.log1p(until[::-1] / fps)
         dd = cols["d_diff"][half]
         for w in POSSESSION.CONTEXT_S:
             k = max(1, int(round(w * fps)))
@@ -253,6 +285,8 @@ def compute(game: Mapping) -> tuple[np.ndarray, list[str]]:
             cols[f"ctrl_fut_{w:g}s"][half] = _window_mean(ctrl, 1, k)
             cols[f"ddiff_past_{w:g}s"][half] = _window_mean(dd, -k, -1)
             cols[f"ddiff_fut_{w:g}s"][half] = _window_mean(dd, 1, k)
+            cols[f"touch_past_{w:g}s"][half] = _window_mean(touch, -k, -1)
+            cols[f"touch_fut_{w:g}s"][half] = _window_mean(touch, 1, k)
         cols["vcx_h"][half] = _centred_diff(q["shape_h"]["cx"][half], kv, fps)
         cols["vcx_a"][half] = _centred_diff(q["shape_a"]["cx"][half], kv, fps)
 

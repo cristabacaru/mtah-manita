@@ -86,21 +86,43 @@ def game_rows(name: str) -> dict:
     Xm, _ = (features.compute(features.mirror(game)) if POSSESSION.MIRROR or POSSESSION.TTA
              else (None, None))
     alive = np.isin(labels, ("H", "A"))
+    weight = frame_weights(labels, float(game["meta"]["fps"]))
     train = np.zeros(len(labels), dtype=bool)
     train[np.flatnonzero(alive)[::POSSESSION.TRAIN_STRIDE]] = True
     return {"name": name, "game": game, "labels": labels, "X": X, "Xm": Xm, "names": names,
-            "alive": alive, "train": train}
+            "alive": alive, "train": train, "weight": weight}
 
 
-def training_matrix(rows: list[dict]) -> tuple[np.ndarray, np.ndarray]:
-    Xs, ys = [], []
+def frame_weights(labels: np.ndarray, fps: float) -> np.ndarray:
+    """Training weight per frame: TURNOVER_WEIGHT within TURNOVER_WINDOW_S of a direct H <-> A change,
+    SHORT_SPELL_WEIGHT inside possessions shorter than SHORT_SPELL_S, 1 elsewhere (the larger wins).
+
+    spellF1 is decided at possession changes and on short possessions, which are few frames.
+    """
+    labels = np.asarray(labels)
+    w = np.ones(len(labels))
+    team = np.isin(labels, ("H", "A"))
+    k = int(round(POSSESSION.TURNOVER_WINDOW_S * fps))
+    for t in np.flatnonzero(team[1:] & team[:-1] & (labels[1:] != labels[:-1])) + 1:
+        w[max(0, t - k):t + k] = np.maximum(w[max(0, t - k):t + k], POSSESSION.TURNOVER_WEIGHT)
+    edges = np.flatnonzero(labels[1:] != labels[:-1]) + 1
+    for a, b in zip(np.r_[0, edges], np.r_[edges, len(labels)]):
+        if team[a] and (b - a) < POSSESSION.SHORT_SPELL_S * fps:
+            w[a:b] = np.maximum(w[a:b], POSSESSION.SHORT_SPELL_WEIGHT)
+    return w
+
+
+def training_matrix(rows: list[dict]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    Xs, ys, ws = [], [], []
     for r in rows:
         Xs.append(r["X"][r["train"]])
         ys.append(r["labels"][r["train"]] == "H")
+        ws.append(r["weight"][r["train"]])
         if POSSESSION.MIRROR:
             Xs.append(r["Xm"][r["train"]])
             ys.append(r["labels"][r["train"]] == "A")        # H and A swap in the mirror
-    return np.vstack(Xs), np.concatenate(ys).astype(np.float64)
+            ws.append(r["weight"][r["train"]])
+    return np.vstack(Xs), np.concatenate(ys).astype(np.float64), np.concatenate(ws)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -108,9 +130,9 @@ def training_matrix(rows: list[dict]) -> tuple[np.ndarray, np.ndarray]:
 # ------------------------------------------------------------------------------------------------
 def fit(rows: list[dict]):
     import lightgbm as lgb
-    X, y = training_matrix(rows)
+    X, y, w = training_matrix(rows)
     params = dict(POSSESSION.LGBM, seed=POSSESSION.SEED)
-    ds = lgb.Dataset(X, y, feature_name=rows[0]["names"], free_raw_data=True)
+    ds = lgb.Dataset(X, y, weight=w, feature_name=rows[0]["names"], free_raw_data=True)
     return lgb.train(params, ds, num_boost_round=POSSESSION.N_ROUNDS)
 
 

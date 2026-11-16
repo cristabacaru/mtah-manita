@@ -221,7 +221,17 @@ class POSSESSION:
     CONTROL_DIST_M = 1.5      # control event: nearest player of one team within this distance ...
     CONTROL_MARGIN_M = 1.0    # ... and closer than the other team's nearest by at least this ...
     CONTROL_REL_SPEED = 3.0   # ... and moving with the ball (|v_ball - v_player| below, m/s)
-    CONTEXT_S = (1.0, 3.0)    # past / future window lengths for the context features
+    CONTEXT_S = (0.5, 1.0, 3.0)  # past / future window lengths; 0.5 s for short possessions (p4-finetuning)
+    # touch events (p4-finetuning): the ball changes velocity sharply next to a player. Short
+    # possessions (< 3 s, 42 % of spells) are decided by single touches the control rule misses.
+    TOUCH_HALF_WINDOW_S = 0.12  # dv = |v_ball(t + k) - v_ball(t - k)|, k = round(this * fps)
+    TOUCH_DV_MPS = 3.0          # a touch is a local peak of dv above this ...
+    TOUCH_DIST_M = 2.0          # ... with the nearest player (either team) within this distance
+    # training weights (p4-finetuning): frames where spellF1 is decided
+    TURNOVER_WINDOW_S = 1.0     # frames within this of a direct H <-> A change in the GT ...
+    TURNOVER_WEIGHT = 3.0       # ... get this weight
+    SHORT_SPELL_S = 3.0         # frames inside GT possessions shorter than this ...
+    SHORT_SPELL_WEIGHT = 3.0    # ... get this weight (the larger of the two applies)
     SHAPE_VEL_S = 1.0         # team centroid velocity: centred difference over +/- this
     # -- model.py ---------------------------------------------------------------------------------
     V0_CONF = 0.8             # v0 rule: p_home = V0_CONF when the last control was H, 1 - V0_CONF if A
@@ -248,17 +258,16 @@ class POSSESSION:
 # P5 decoder and tuning (Andra)
 # =================================================================================================
 class DECODER:
-    # Tuned 2026-11-16 (Optuna TPE, seed 0, 60 trials) on mean official spellF1 over the 27 external
-    # suite copies, inputs: p_dead combiner (LOMO), p_home model e4ac0de (out of fold), restarts.py
-    # anchors. Suite 0.371 -> 0.509. Honest check, tuned on half the matches and scored on the
-    # other half: 0.385 -> 0.511 and 0.354 -> 0.507, every copy improved. Previous values in
-    # brackets. Retune if p_dead or p_home change. experiments.csv 2026-11-16.
-    EMISSION_SCALE = 0.387      # [0.1]
-    SWITCH_TEAM = 1.991         # [12.0]
-    SWITCH_DEAD = 25.692        # [10.0]
-    MIN_LIVE_S = 0.296          # [0.48]
-    MIN_DEAD_S = 0.968          # [2.0]
-    ANCHOR_BONUS = 8.534        # [8.0]
+    # p4-finetuning branch: retuned 2026-11-17 for the variant-C p_home (touch features + turnover /
+    # short-spell weights), same method as on main (Optuna TPE seed 0, 60 trials, 27 suite copies,
+    # tag_bonus fixed). Suite 0.5187 (main's decoder values) -> 0.5243; held-out by match 0.522 /
+    # 0.522 against main's 0.511 / 0.507. main's values in brackets.
+    EMISSION_SCALE = 0.265      # [main 0.387]
+    SWITCH_TEAM = 2.367         # [main 1.991]
+    SWITCH_DEAD = 18.305        # [main 25.692]
+    MIN_LIVE_S = 0.639          # [main 0.296]
+    MIN_DEAD_S = 1.333          # [main 0.968]
+    ANCHOR_BONUS = 9.190        # [main 8.534]
     TAG_BONUS = 4.0             # not tuned: external games have no Smart Tagging
     SNAP_MIN_CONFIDENCE = 0.6       # excludes low-confidence "unknown" restart anchors
     SHORT_LIVE_SPELL_S = 0.6        # merge only same-team-bracketed H/A flickers
