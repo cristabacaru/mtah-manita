@@ -57,8 +57,8 @@ mtah/                     OUR PIPELINE (all new work goes here)
 │  ├─ evaluate.py         D-interval F1 + boundary offset on external games      P3a Cristiana (planned)
 │  ├─ tags.py             Smart Tagging -> tags.json (frames, type, H/A team)    P3b Alexia
 │  └─ restarts.py         kick-off + restart detection, restart team -> anchors  P3b Alexia
-├─ ball.py                ball-gap bridging (interpolation, RTS smoother)        P4 (planned)
-├─ features.py, model.py  team-possession features + LightGBM -> p_home[t]      P4 (planned)
+├─ ball.py                ball-gap bridging (Kalman + RTS smoother, <= 4 s)      P4 Bianca
+├─ features.py, model.py  team-possession features + LightGBM -> p_home[t]      P4 Bianca
 ├─ decode.py              HSMM/Viterbi decoder, boundary snapping                P5
 └─ optuna_tune.py         decoder tuning scaffold                                P5
 run.sh                    one command: raw data -> Manita.csv (see "Running the pipeline")  P1

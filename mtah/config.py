@@ -210,7 +210,34 @@ class RESTARTS:
 # P4 team-possession model (Bianca)
 # =================================================================================================
 class POSSESSION:
-    pass
+    """p_home[t] = P(H in possession | ball alive). Files: ball.py, features.py, model.py."""
+    # -- ball.py: gap bridging (constant-velocity Kalman + RTS smoother, per half) ---------------
+    BRIDGE_MAX_S = 4.0        # fill a ball gap only if it is at most this long and seen at both ends
+    KF_ACC_STD = 8.0          # m/s^2, white-acceleration process noise (kicks are absorbed by it)
+    KF_MEAS_STD = 0.5         # m, ball position measurement noise
+    # -- features.py ------------------------------------------------------------------------------
+    VEL_HALF_WINDOW_S = 0.2   # player velocity vectors: same centred difference as players_speed
+    NEAR_RADII_M = (2.0, 5.0)  # players of each team within these distances of the ball
+    CONTROL_DIST_M = 1.5      # control event: nearest player of one team within this distance ...
+    CONTROL_MARGIN_M = 1.0    # ... and closer than the other team's nearest by at least this ...
+    CONTROL_REL_SPEED = 3.0   # ... and moving with the ball (|v_ball - v_player| below, m/s)
+    CONTEXT_S = (1.0, 3.0)    # past / future window lengths for the context features
+    SHAPE_VEL_S = 1.0         # team centroid velocity: centred difference over +/- this
+    # -- model.py ---------------------------------------------------------------------------------
+    V0_CONF = 0.8             # v0 rule: p_home = V0_CONF when the last control was H, 1 - V0_CONF if A
+    TRAIN_STRIDE = 5          # train on every k-th alive frame (neighbours are near duplicates)
+    MIRROR = True             # augment: 180-degree rotation + swap H/A (removes any home bias)
+    TTA = True                # predict (p(x) + 1 - p(mirror x)) / 2: symmetric by construction
+    CALIBRATE = True          # isotonic map fitted on out-of-fold predictions
+    EPS = 1e-3                # p_home clipped to [EPS, 1 - EPS]
+    LGBM = dict(
+        objective="binary", learning_rate=0.05, num_leaves=31, min_data_in_leaf=200,
+        feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0,
+        num_threads=4, deterministic=True, force_col_wise=True, seed=0, verbose=-1,
+    )
+    N_ROUNDS = 400
+    SEED = 0
+    MODEL_DIR = CACHE_DIR / "p4"                  # trained model + calibration + reports
 
 
 # =================================================================================================
