@@ -248,13 +248,18 @@ class POSSESSION:
 # P5 decoder and tuning (Andra)
 # =================================================================================================
 class DECODER:
-    EMISSION_SCALE = 0.1
-    SWITCH_TEAM = 12.0
-    SWITCH_DEAD = 10.0
-    MIN_LIVE_S = 0.48
-    MIN_DEAD_S = 2.0
-    ANCHOR_BONUS = 8.0
-    TAG_BONUS = 4.0
+    # Tuned 2026-11-16 (Optuna TPE, seed 0, 60 trials) on mean official spellF1 over the 27 external
+    # suite copies, inputs: p_dead combiner (LOMO), p_home model e4ac0de (out of fold), restarts.py
+    # anchors. Suite 0.371 -> 0.509. Honest check, tuned on half the matches and scored on the
+    # other half: 0.385 -> 0.511 and 0.354 -> 0.507, every copy improved. Previous values in
+    # brackets. Retune if p_dead or p_home change. experiments.csv 2026-11-16.
+    EMISSION_SCALE = 0.387      # [0.1]
+    SWITCH_TEAM = 1.991         # [12.0]
+    SWITCH_DEAD = 25.692        # [10.0]
+    MIN_LIVE_S = 0.296          # [0.48]
+    MIN_DEAD_S = 0.968          # [2.0]
+    ANCHOR_BONUS = 8.534        # [8.0]
+    TAG_BONUS = 4.0             # not tuned: external games have no Smart Tagging
     SNAP_MIN_CONFIDENCE = 0.6       # excludes low-confidence "unknown" restart anchors
     SHORT_LIVE_SPELL_S = 0.6        # merge only same-team-bracketed H/A flickers
 
