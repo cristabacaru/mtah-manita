@@ -7,6 +7,9 @@
     python -m mtah.model --game BAR-ATH --v0     # rule only: last controlling team, no training
     python -m mtah.model --ablate                # LOMO with each feature group removed (writes p4/ablation.json only)
 
+Model: models/p_home_lgbm.txt + p_home_isotonic.json + p_home_meta.json, committed, so --game
+never retrains when they are there (it trains them only if they are missing).
+
 Output: $MTAH_CACHE/<game>/p_home.npy, float64 (n,), in [EPS, 1 - EPS] inside the halves, NaN outside.
 
 Training data: the suite (config.EXTERNAL: 9 external games x 3 noise levels), alive frames only
@@ -42,8 +45,9 @@ REPO = config.REPO_ROOT
 sys.path.insert(0, str(REPO / "evaluation"))
 import possession_metrics as pm  # noqa: E402  (official scorer, unedited)
 
-MODEL_PATH = POSSESSION.MODEL_DIR / "p_home_lgbm.txt"
-CALIB_PATH = POSSESSION.MODEL_DIR / "p_home_isotonic.json"
+MODEL_PATH = POSSESSION.WEIGHTS_DIR / "p_home_lgbm.txt"            # committed (config.POSSESSION)
+CALIB_PATH = POSSESSION.WEIGHTS_DIR / "p_home_isotonic.json"
+META_PATH = POSSESSION.WEIGHTS_DIR / "p_home_meta.json"
 REPORT_PATH = POSSESSION.MODEL_DIR / "report.json"
 ORACLE_SWITCH = 8.0        # fixed 2-state switch cost (nats) of the oracle-D evaluation only
 
@@ -280,7 +284,7 @@ def train(log_change: str | None = None) -> dict:
     res = lomo(rows, t0)
     raw = res["raw"]
     report = {"games": {}, "settings": {k: v for k, v in vars(POSSESSION).items()
-                                         if k.isupper() and k != "MODEL_DIR"}}
+                                         if k.isupper() and not k.endswith("_DIR")}}
     for r in rows:
         p = res["p"][r["name"]]
         p_v0 = v0_p_home(r["game"])
@@ -289,10 +293,12 @@ def train(log_change: str | None = None) -> dict:
 
     # final model on every suite game
     POSSESSION.MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    POSSESSION.WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
     booster = fit(rows)
     booster.save_model(str(MODEL_PATH))
     calib = fit_isotonic(*oof_xy(raw, rows)) if POSSESSION.CALIBRATE else None
     CALIB_PATH.write_text(json.dumps(calib))
+    write_meta(report["settings"])
     imp = booster.feature_importance(importance_type="gain")
     report["importance"] = dict(sorted(zip(rows[0]["names"], imp.tolist()), key=lambda kv: -kv[1]))
     report["summary"] = summarise(report["games"])
@@ -302,6 +308,20 @@ def train(log_change: str | None = None) -> dict:
     if log_change:
         log_experiment(report, log_change)
     return report
+
+
+def write_meta(settings: dict) -> None:
+    """Provenance of the committed model: which suite it was trained on, and its hashes."""
+    manifest = json.loads(EXTERNAL.SUITE_MANIFEST.read_text())
+    meta = {"suite": {k: manifest.get(k) for k in ("target_provisional", "sim_params_fitted", "target_hash")},
+            "games": [g for g, _ in suite_games()],
+            "model_sha256": hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest(),
+            "calibration_sha256": hashlib.sha256(CALIB_PATH.read_bytes()).hexdigest(),
+            "settings": settings}
+    META_PATH.write_text(json.dumps(meta, indent=1, sort_keys=True, default=float) + "\n")
+    if manifest.get("target_provisional") or not manifest.get("sim_params_fitted"):
+        print("  WARNING: trained on a PROVISIONAL suite (no target_stats.json / sim_params.json); "
+              "do not commit this model")
 
 
 def summarise(per_game: dict) -> dict:
@@ -320,7 +340,7 @@ def print_summary(report: dict) -> None:
         print(f"  {k:<16}{s['spellF1']:>9.4f}{s['macroF1']:>9.4f}{s['acc']:>8.4f}{s['logloss']:>9.4f}{s['ece']:>8.4f}")
     top = list(report["importance"])[:10]
     print("  top features (gain):", ", ".join(top))
-    print(f"  wrote {MODEL_PATH}\n        {CALIB_PATH}\n        {REPORT_PATH}  ({report['seconds']} s)")
+    print(f"  wrote {MODEL_PATH}\n        {CALIB_PATH}\n        {META_PATH}\n        {REPORT_PATH}  ({report['seconds']} s)")
 
 
 def log_experiment(report: dict, change: str) -> None:

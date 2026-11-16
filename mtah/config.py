@@ -237,7 +237,11 @@ class POSSESSION:
     )
     N_ROUNDS = 400
     SEED = 0
-    MODEL_DIR = CACHE_DIR / "p4"                  # trained model + calibration + reports
+    MODEL_DIR = CACHE_DIR / "p4"                  # reports (report.json, ablation.json)
+    # Trained model + calibration, COMMITTED so the pipeline does not retrain on every machine.
+    # Learned from external games only (no BAR-ATH data); `python -m mtah.model --train` regenerates
+    # them byte for byte from the same suite. p_home_meta.json says which suite that was.
+    WEIGHTS_DIR = REPO_ROOT / "models"
 
 
 # =================================================================================================

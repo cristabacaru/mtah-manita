@@ -1,0 +1,79 @@
+{
+ "calibration_sha256": "a6d4b69ab28c041dcb2e5c0e3e1f9b6e99028a8659ca2edca99255f148e4e000",
+ "games": [
+  "dfl_J03WMX__light",
+  "dfl_J03WMX__target",
+  "dfl_J03WMX__heavy",
+  "dfl_J03WN1__light",
+  "dfl_J03WN1__target",
+  "dfl_J03WN1__heavy",
+  "dfl_J03WOH__light",
+  "dfl_J03WOH__target",
+  "dfl_J03WOH__heavy",
+  "dfl_J03WOY__light",
+  "dfl_J03WOY__target",
+  "dfl_J03WOY__heavy",
+  "dfl_J03WPY__light",
+  "dfl_J03WPY__target",
+  "dfl_J03WPY__heavy",
+  "dfl_J03WQQ__light",
+  "dfl_J03WQQ__target",
+  "dfl_J03WQQ__heavy",
+  "dfl_J03WR9__light",
+  "dfl_J03WR9__target",
+  "dfl_J03WR9__heavy",
+  "metrica1_events__light",
+  "metrica1_events__target",
+  "metrica1_events__heavy",
+  "metrica2_events__light",
+  "metrica2_events__target",
+  "metrica2_events__heavy"
+ ],
+ "model_sha256": "94bb4766a932b33867bc3527dfe5ce22f305a98662fcb312b592bc6d3f0e2663",
+ "settings": {
+  "BRIDGE_MAX_S": 4.0,
+  "CALIBRATE": true,
+  "CONTEXT_S": [
+   1.0,
+   3.0
+  ],
+  "CONTROL_DIST_M": 1.5,
+  "CONTROL_MARGIN_M": 1.0,
+  "CONTROL_REL_SPEED": 3.0,
+  "EPS": 0.001,
+  "KF_ACC_STD": 8.0,
+  "KF_MEAS_STD": 0.5,
+  "LGBM": {
+   "bagging_fraction": 0.8,
+   "bagging_freq": 1,
+   "deterministic": true,
+   "feature_fraction": 0.8,
+   "force_col_wise": true,
+   "lambda_l2": 1.0,
+   "learning_rate": 0.05,
+   "min_data_in_leaf": 200,
+   "num_leaves": 31,
+   "num_threads": 4,
+   "objective": "binary",
+   "seed": 0,
+   "verbose": -1
+  },
+  "MIRROR": true,
+  "NEAR_RADII_M": [
+   2.0,
+   5.0
+  ],
+  "N_ROUNDS": 400,
+  "SEED": 0,
+  "SHAPE_VEL_S": 1.0,
+  "TRAIN_STRIDE": 5,
+  "TTA": true,
+  "V0_CONF": 0.8,
+  "VEL_HALF_WINDOW_S": 0.2
+ },
+ "suite": {
+  "sim_params_fitted": true,
+  "target_hash": "4a1dc772c339",
+  "target_provisional": false
+ }
+}
