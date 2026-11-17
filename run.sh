@@ -45,11 +45,14 @@ export PYTHONHASHSEED=0                    # determinism: same input -> same sha
 GAME="$("$PY" -c 'from mtah import config; print(config.GAME)')"
 CACHE="$("$PY" -c 'from mtah import config; print(config.game_cache())')"
 SUBMISSION="$("$PY" -c 'from mtah import config; print(config.SUBMISSION_CSV)')"
+SUBMISSION_NAME="$(basename "$SUBMISSION")"   # e.g. Manita.csv: the stage list below splits on spaces,
+                                              # so it holds "@repo/<name>", never the full path
 
 if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
 
 # -- stages ---------------------------------------------------------------------------------------
-# name | file | module | arguments | outputs (in the cache unless absolute) | owner
+# name | file | module | arguments | outputs (in the cache, or @repo/<file> in the repo root) | owner
+# Outputs are space-separated, so no entry may contain the (possibly spaced) repo or cache path.
 # Order follows the data flow: decode reads p_dead, p_home, tags and anchors; submit reads labels.
 STAGES="
 data|mtah/data.py|mtah.data||ball_xy.npy players_xy.npy players_speed.npy players_team.npy meta.json|P1 Alexia
@@ -58,7 +61,7 @@ p_home|mtah/model.py|mtah.model|--game $GAME|p_home.npy|P4 Bianca
 tags|mtah/deadball/tags.py|mtah.deadball.tags|--game $GAME|tags.json|P3b Alexia
 restarts|mtah/deadball/restarts.py|mtah.deadball.restarts|--game $GAME|anchors.json|P3b Alexia
 labels|mtah/decode.py|mtah.decode|--game $GAME|labels.npy|P5 Andra
-submit|mtah/submit.py|mtah.submit||$SUBMISSION|P1 Alexia
+submit|mtah/submit.py|mtah.submit||@repo/$SUBMISSION_NAME|P1 Alexia
 "
 
 is_written() {  # file exists and can be run with python -m
@@ -66,7 +69,7 @@ is_written() {  # file exists and can be run with python -m
 }
 
 output_path() {
-  case "$1" in /*) echo "$1" ;; *) echo "$CACHE/$1" ;; esac
+  case "$1" in @repo/*) echo "$ROOT/${1#@repo/}" ;; *) echo "$CACHE/$1" ;; esac
 }
 
 if [ -n "$FROM" ] && ! echo "$STAGES" | grep -q "^$FROM|"; then
