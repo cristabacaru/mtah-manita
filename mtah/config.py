@@ -227,9 +227,11 @@ class POSSESSION:
     CONTEXT_S = (0.5, 1.0, 3.0)  # past / future window lengths; 0.5 s for short possessions (p4-finetuning)
     # touch events (p4-finetuning): the ball changes velocity sharply next to a player. Short
     # possessions (< 3 s, 42 % of spells) are decided by single touches the control rule misses.
-    TOUCH_HALF_WINDOW_S = 0.12  # dv = |v_ball(t + k) - v_ball(t - k)|, k = round(this * fps)
+    # re-screened after the sharper KF (LOMO oracle-D, base 0.7029): window 0.08 -> 0.7096, 0.04 -> 0.7067;
+    # dist 1.5 -> 0.7053; dv 2 -> 0.6982, 4.5 -> 0.7044; window 0.08 + dist 1.5 -> 0.7130 (+ dv 4.5: 0.7135)
+    TOUCH_HALF_WINDOW_S = 0.08  # [was 0.12] dv = |v_ball(t + k) - v_ball(t - k)|, k = round(this * fps)
     TOUCH_DV_MPS = 3.0          # a touch is a local peak of dv above this ...
-    TOUCH_DIST_M = 2.0          # ... with the nearest player (either team) within this distance
+    TOUCH_DIST_M = 1.5          # [was 2.0] ... with the nearest player (either team) within this distance
     # training weights (p4-finetuning): frames where spellF1 is decided
     TURNOVER_WINDOW_S = 1.0     # frames within this of a direct H <-> A change in the GT ...
     TURNOVER_WEIGHT = 3.0       # ... get this weight
@@ -248,11 +250,13 @@ class POSSESSION:
     CALIBRATE = True          # isotonic map fitted on out-of-fold predictions
     EPS = 1e-3                # p_home clipped to [EPS, 1 - EPS]
     LGBM = dict(
-        objective="binary", learning_rate=0.05, num_leaves=31, min_data_in_leaf=200,
+        # p4-finetuning capacity screen (LOMO oracle-D, base 0.7130): 800 rounds 0.7179, stride 2 0.7143,
+        # 63 leaves / 600 rounds 0.7195, 63 leaves / 1000 rounds 0.7198 (plateau)
+        objective="binary", learning_rate=0.05, num_leaves=63, min_data_in_leaf=200,   # [was 31]
         feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0,
         num_threads=4, deterministic=True, force_col_wise=True, seed=0, verbose=-1,
     )
-    N_ROUNDS = 400
+    N_ROUNDS = 600            # [was 400]
     SEED = 0
     MODEL_DIR = CACHE_DIR / "p4"                  # reports (report.json, ablation.json)
     # Trained model + calibration, COMMITTED so the pipeline does not retrain on every machine.
