@@ -1,7 +1,6 @@
 # Labelling guide: shared labels, data format and evaluation
 
-The reference for everyone on the team and for any Claude session in this repo. It fixes what must be
-**the same across modules**: the labels, the rules, the data schema, the GT format and how we score.
+The reference for everyone on the team. It fixes what must be **the same across modules**: the labels, the rules, the data schema, the GT format and how we score.
 How each module works is up to its owner (see the module contract in `README.md`).
 
 **Status of each item:**

@@ -39,31 +39,28 @@ environment are correct.
 
 ## Repository layout: where to build
 
-Items marked *(planned)* do not exist yet. Their owner creates them.
-
 ```
 mtah/                     OUR PIPELINE (all new work goes here)
 ├─ config.py              every setting and seed                                P1
 ├─ data.py                ATD -> shared-schema .npy arrays (guide section 5)     P1
-├─ evaluate.py            score(labels, gt) wrapper, experiments.csv logging     P1 (planned)
 ├─ submit.py              writes Manita.csv (X outside graded halves) + sha256   P1
 ├─ external/              DFL/IDSSE + Metrica loaders, suite, export (README)    P2 Theo
 ├─ simulate.py            ball-gap / noise simulator calibrated to BAR-ATH        P2 Theo
 ├─ schema.py              internal Game container of mtah/external/              P2 Theo
 ├─ deadball/              dead-ball module                                       P3
-│  ├─ signals.py          ball-gap + motion-collapse signals (all frames)        P3a Cristiana (planned)
-│  ├─ lines.py            ball distance past / to the touchline and goal line    P3a Cristiana (planned)
+│  ├─ signals.py          ball-gap + motion-collapse signals (all frames)        P3a Cristiana
+│  ├─ lines.py            ball distance past / to the touchline and goal line    P3a Cristiana
 │  ├─ combine.py          all evidence -> final p_dead[t] (logistic combiner)      P3a Cristiana
-│  ├─ evaluate.py         D-interval F1 + boundary offset on external games      P3a Cristiana (planned)
+│  ├─ evaluate.py         D-interval F1 + boundary offset on external games      P3a Cristiana
 │  ├─ tags.py             Smart Tagging -> tags.json (frames, type, H/A team)    P3b Alexia
 │  └─ restarts.py         kick-off + restart detection, restart team -> anchors  P3b Alexia
 ├─ ball.py                ball-gap bridging (Kalman + RTS smoother, <= 4 s)      P4 Bianca
 ├─ features.py, model.py  team-possession features + LightGBM -> p_home[t]      P4 Bianca
 ├─ decode.py              HSMM/Viterbi decoder, boundary snapping                P5
-└─ optuna_tune.py         decoder tuning scaffold                                P5
+└─ optuna_tune.py         decoder tuning on the external suite (Optuna)        P5
 run.sh                    one command: raw data -> Manita.csv (see "Running the pipeline")  P1
 experiments.csv           one row per experiment (who, what, external scores)
-docs/TECHNICAL.md         technical doc, one section per owner (skeleton)
+docs/TECHNICAL.md         technical document (submitted as Manita.pdf)
 
 evaluation/               official scorer (copied from the challenge repo, do not edit)
 starter/                  official loaders + baseline (do not edit, import from them)
@@ -77,7 +74,7 @@ Files from the official repo (`evaluation/`, `starter/`, `games.py`) are MIT lic
 `LICENSE-metrica`. Leave them unchanged so our scores match the official scorer. If you need
 different behaviour, wrap the function in `mtah/`.
 
-### Module contract (proposal: confirm with the whole team, then remove this note)
+### Module contract
 
 Every module works on **per-half arrays indexed by video frame**. External games must have the
 exact same shape and schema as the target game, so every module runs on both unchanged.
@@ -94,8 +91,8 @@ exact same shape and schema as the target game, so every module runs on both unc
 have no Smart Tagging). The decoder (P5) alone places D boundaries, using anchors and tags. P3b owns
 the `anchors.json` and `tags.json` formats; `docs/deadball_SPEC.md` covers `p_dead` only.
 
-As long as these shapes hold, P3, P4 and P5 can work in parallel against stub inputs (e.g.
-`p_dead` = ball-missing-for-3-s mask, `p_home` = nearest-team baseline).
+As long as these shapes hold, each module can be developed and tested on its own against stub
+inputs (e.g. `p_dead` = ball-missing-for-3-s mask, `p_home` = nearest-team baseline).
 
 ---
 
@@ -147,7 +144,7 @@ python -m mtah.optuna_tune --trials 50 --levels target
 
 The tuner reads only the external suite manifest and GT files, maximizes the mean official
 spell-F1, and saves the best parameters under `$MTAH_CACHE/reports/`. It does not tune on the
-public five-minute GT. It cannot run until P4's probabilities exist for the external copies.
+public five-minute GT.
 
 ---
 
@@ -194,7 +191,7 @@ Submit through the official Google form, one response per team (the last one bef
 counts). You need:
 - the team name;
 - `Manita.csv`;
-- the public URL of this repo (switch it to Public first);
+- the public URL of this repo;
 - the technical document as `Manita.pdf` or `.md`.
 
 You need a Google account to upload. There is no leaderboard and no feedback before the deadline.

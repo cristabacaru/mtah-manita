@@ -22,7 +22,7 @@ the submission (see `SUBMISSION.md`).
 `run_evaluation.py`, `baseline.py`, the loaders and the three notebooks), and ran the scorer on
 the four committed baselines.
 
-**Output:** `C:\Users\User\Desktop\BarcaHack_Project_Guide.md`, which covers the task, the data,
+**Output:** a local project guide (not part of this repository), which covers the task, the data,
 every metric with worked examples, the rules, the baseline results and an ML glossary.
 
 **Reproduce:**
