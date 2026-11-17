@@ -217,9 +217,14 @@ def viterbi_restart_bonus(
 
 
 def probabilities_to_logp(
-    p_dead: np.ndarray, p_home: np.ndarray, emission_scale: float = 0.1
+    p_dead: np.ndarray, p_home: np.ndarray, emission_scale: float = 0.1,
+    home_scale: float | None = None,
 ) -> np.ndarray:
-    """Convert P(dead) and P(home | live) into scaled H/A/D log emissions."""
+    """Convert P(dead) and P(home | live) into scaled H/A/D log emissions.
+
+    home_scale (p4-finetuning) weights the H-vs-A term log P(home | live) separately from the
+    alive-vs-dead terms; None keeps the single emission_scale for both (previous behaviour).
+    """
     p_dead = np.asarray(p_dead, dtype=np.float64)
     p_home = np.asarray(p_home, dtype=np.float64)
     if p_dead.ndim != 1 or p_home.shape != p_dead.shape:
@@ -236,11 +241,14 @@ def probabilities_to_logp(
     eps = 1e-8
     dead = np.clip(p_dead, eps, 1.0 - eps)
     home_live = np.clip(p_home, eps, 1.0 - eps)
+    team_scale = emission_scale if home_scale is None else float(home_scale)
+    if not math.isfinite(team_scale) or team_scale <= 0:
+        raise ValueError("home_scale must be a positive finite number")
     logp = np.empty((len(dead), 3), dtype=np.float64)
-    logp[:, H] = np.log1p(-dead) + np.log(home_live)
-    logp[:, A] = np.log1p(-dead) + np.log1p(-home_live)
-    logp[:, D] = np.log(dead)
-    return logp * emission_scale
+    logp[:, H] = emission_scale * np.log1p(-dead) + team_scale * np.log(home_live)
+    logp[:, A] = emission_scale * np.log1p(-dead) + team_scale * np.log1p(-home_live)
+    logp[:, D] = emission_scale * np.log(dead)
+    return logp
 
 
 def restart_transition_bonus(
@@ -385,8 +393,15 @@ def decode_probabilities(
     tag_bonus: float = config.DECODER.TAG_BONUS,
     snap_min_confidence: float = config.DECODER.SNAP_MIN_CONFIDENCE,
     short_live_spell_frames: int = round(config.DECODER.SHORT_LIVE_SPELL_S * config.FPS),
+    home_scale: float | None = config.DECODER.HOME_SCALE,
+    p_turn: np.ndarray | None = None,
+    turn_bonus: float = config.DECODER.TURN_BONUS,
 ) -> np.ndarray:
-    """Decode probability arrays into H/A/D/X labels, resetting state at every half boundary."""
+    """Decode probability arrays into H/A/D/X labels, resetting state at every half boundary.
+
+    p4-finetuning: p_turn (P(direct H <-> A change near t), from mtah.model) makes an H <-> A switch
+    cheaper by turn_bonus * p_turn[t]; with p_turn None or turn_bonus 0 nothing changes.
+    """
     p_dead = np.asarray(p_dead, dtype=np.float64)
     p_home = np.asarray(p_home, dtype=np.float64)
     if p_dead.ndim != 1 or p_home.shape != p_dead.shape:
@@ -405,12 +420,21 @@ def decode_probabilities(
         anchor_bonus=anchor_bonus, tag_bonus=tag_bonus,
     )
 
+    if p_turn is not None and turn_bonus:
+        if turn_bonus < 0:
+            raise ValueError("turn_bonus must be non-negative")
+        turn = np.nan_to_num(np.asarray(p_turn, dtype=np.float64), nan=0.0)
+        if turn.shape != p_dead.shape:
+            raise ValueError("p_turn must be aligned with p_dead")
+        bonus_all[:, H, A] += turn_bonus * turn
+        bonus_all[:, A, H] += turn_bonus * turn
+
     for start, stop in half_blocks:
         dead = p_dead[start:stop]
         home = p_home[start:stop]
         if not (np.isfinite(dead).all() and np.isfinite(home).all()):
             raise ValueError(f"p_dead/p_home has missing values inside half [{start}, {stop})")
-        logp = probabilities_to_logp(dead, home, emission_scale=emission_scale)
+        logp = probabilities_to_logp(dead, home, emission_scale=emission_scale, home_scale=home_scale)
         path = viterbi_min_duration(
             logp,
             min_len=(min_live_frames, min_live_frames, min_dead_frames),
@@ -475,6 +499,9 @@ def run(game: str = config.GAME, **overrides) -> dict:
         )
     tags = _read_json(tags_path)
     anchors = _read_json(anchors_path)
+    turn_path = folder / "p_turn.npy"                     # p4-finetuning, optional
+    if turn_path.is_file():
+        overrides.setdefault("p_turn", np.load(turn_path, allow_pickle=False))
     half_blocks = [(int(a), int(b) + 1) for a, b in meta["halves"]]
     labels = decode_probabilities(
         p_dead,

@@ -54,7 +54,7 @@ if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum 
 STAGES="
 data|mtah/data.py|mtah.data||ball_xy.npy players_xy.npy players_speed.npy players_team.npy meta.json|P1 Alexia
 p_dead|mtah/deadball/combine.py|mtah.deadball.combine|--game $GAME|p_dead.npy|P3a Cristiana
-p_home|mtah/model.py|mtah.model|--game $GAME|p_home.npy|P4 Bianca
+p_home|mtah/model.py|mtah.model|--game $GAME|p_home.npy p_turn.npy|P4 Bianca
 tags|mtah/deadball/tags.py|mtah.deadball.tags|--game $GAME|tags.json|P3b Alexia
 restarts|mtah/deadball/restarts.py|mtah.deadball.restarts|--game $GAME|anchors.json|P3b Alexia
 labels|mtah/decode.py|mtah.decode|--game $GAME|labels.npy|P5 Andra

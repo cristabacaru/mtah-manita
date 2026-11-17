@@ -198,8 +198,13 @@ def _touches(vel: np.ndarray, d_h: np.ndarray, d_a: np.ndarray, fps: float) -> t
     if len(vel) > 2 * k:
         dv[k:-k] = np.hypot(*(vel[2 * k:] - vel[:-2 * k]).T)
     z = np.nan_to_num(dv, nan=-1.0)                      # NaN never peaks
-    peak = np.zeros(len(dv), dtype=bool)
-    peak[1:-1] = (z[1:-1] >= z[:-2]) & (z[1:-1] > z[2:]) & (z[1:-1] > POSSESSION.TOUCH_DV_MPS)
+    # one touch per kick: dv must be the maximum of [t - k, t + k] (non-maximum suppression); on
+    # ties the first frame wins. A plain local-maximum test fires twice on one sharp kick.
+    win = np.lib.stride_tricks.sliding_window_view(np.pad(z, k, constant_values=-1.0), 2 * k + 1)
+    peak = (z >= win.max(axis=1)) & (z > POSSESSION.TOUCH_DV_MPS)
+    peak[1:] &= ~(peak[:-1] & (z[1:] == z[:-1]))
+    for lag in range(2, k + 1):                          # drop later frames of a tied plateau
+        peak[lag:] &= ~(peak[:-lag] & (z[lag:] == z[:-lag]))
     dh, da = np.nan_to_num(d_h, nan=np.inf), np.nan_to_num(d_a, nan=np.inf)
     near = np.minimum(dh, da) < POSSESSION.TOUCH_DIST_M
     touch = np.where(peak & near, np.where(dh <= da, 1.0, -1.0), 0.0)

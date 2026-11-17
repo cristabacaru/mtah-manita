@@ -48,6 +48,8 @@ import possession_metrics as pm  # noqa: E402  (official scorer, unedited)
 MODEL_PATH = POSSESSION.WEIGHTS_DIR / "p_home_lgbm.txt"            # committed (config.POSSESSION)
 CALIB_PATH = POSSESSION.WEIGHTS_DIR / "p_home_isotonic.json"
 META_PATH = POSSESSION.WEIGHTS_DIR / "p_home_meta.json"
+TURN_MODEL_PATH = POSSESSION.WEIGHTS_DIR / "p_turn_lgbm.txt"         # p4-finetuning
+TURN_CALIB_PATH = POSSESSION.WEIGHTS_DIR / "p_turn_isotonic.json"
 REPORT_PATH = POSSESSION.MODEL_DIR / "report.json"
 ORACLE_SWITCH = 8.0        # fixed 2-state switch cost (nats) of the oracle-D evaluation only
 
@@ -87,10 +89,30 @@ def game_rows(name: str) -> dict:
              else (None, None))
     alive = np.isin(labels, ("H", "A"))
     weight = frame_weights(labels, float(game["meta"]["fps"]))
+    y_turn = turn_target(labels, float(game["meta"]["fps"]))
     train = np.zeros(len(labels), dtype=bool)
     train[np.flatnonzero(alive)[::POSSESSION.TRAIN_STRIDE]] = True
     return {"name": name, "game": game, "labels": labels, "X": X, "Xm": Xm, "names": names,
-            "alive": alive, "train": train, "weight": weight}
+            "alive": alive, "train": train, "weight": weight, "y_turn": y_turn}
+
+
+def turn_target(labels: np.ndarray, fps: float) -> np.ndarray:
+    """(n,) bool: a direct H <-> A change in the GT within TURN_WINDOW_S of t (target of p_turn)."""
+    labels = np.asarray(labels)
+    team = np.isin(labels, ("H", "A"))
+    y = np.zeros(len(labels), dtype=bool)
+    k = int(round(POSSESSION.TURN_WINDOW_S * fps))
+    for t in np.flatnonzero(team[1:] & team[:-1] & (labels[1:] != labels[:-1])) + 1:
+        y[max(0, t - k):t + k] = True
+    return y
+
+
+def _target(r: dict, target: str, mirrored: bool = False) -> np.ndarray:
+    """Training labels of one game's training rows: home = H has the ball (A in the mirror),
+    turn = a possession change is near (the same in the mirror)."""
+    if target == "turn":
+        return r["y_turn"][r["train"]]
+    return r["labels"][r["train"]] == ("A" if mirrored else "H")
 
 
 def frame_weights(labels: np.ndarray, fps: float) -> np.ndarray:
@@ -112,35 +134,38 @@ def frame_weights(labels: np.ndarray, fps: float) -> np.ndarray:
     return w
 
 
-def training_matrix(rows: list[dict]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def training_matrix(rows: list[dict], target: str = "home") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     Xs, ys, ws = [], [], []
     for r in rows:
+        w = r["weight"][r["train"]] if target == "home" else np.ones(int(r["train"].sum()))
         Xs.append(r["X"][r["train"]])
-        ys.append(r["labels"][r["train"]] == "H")
-        ws.append(r["weight"][r["train"]])
+        ys.append(_target(r, target))
+        ws.append(w)
         if POSSESSION.MIRROR:
             Xs.append(r["Xm"][r["train"]])
-            ys.append(r["labels"][r["train"]] == "A")        # H and A swap in the mirror
-            ws.append(r["weight"][r["train"]])
+            ys.append(_target(r, target, mirrored=True))      # H and A swap in the mirror
+            ws.append(w)
     return np.vstack(Xs), np.concatenate(ys).astype(np.float64), np.concatenate(ws)
 
 
 # ------------------------------------------------------------------------------------------------
 # model
 # ------------------------------------------------------------------------------------------------
-def fit(rows: list[dict]):
+def fit(rows: list[dict], target: str = "home"):
     import lightgbm as lgb
-    X, y, w = training_matrix(rows)
+    X, y, w = training_matrix(rows, target)
     params = dict(POSSESSION.LGBM, seed=POSSESSION.SEED)
     ds = lgb.Dataset(X, y, weight=w, feature_name=rows[0]["names"], free_raw_data=True)
     return lgb.train(params, ds, num_boost_round=POSSESSION.N_ROUNDS)
 
 
-def predict_raw(booster, X: np.ndarray, Xm: np.ndarray | None) -> np.ndarray:
-    """Raw P(H) on every frame; with TTA, averaged with 1 - P(H) of the mirrored frame."""
+def predict_raw(booster, X: np.ndarray, Xm: np.ndarray | None, target: str = "home") -> np.ndarray:
+    """Raw P(H) on every frame; with TTA, averaged with 1 - P(H) of the mirrored frame.
+    For target "turn" (symmetric), averaged with P(turn) of the mirrored frame."""
     p = booster.predict(X)
     if POSSESSION.TTA and Xm is not None:
-        p = 0.5 * (p + 1.0 - booster.predict(Xm))
+        pm_ = booster.predict(Xm)
+        p = 0.5 * (p + (pm_ if target == "turn" else 1.0 - pm_))
     return p
 
 
@@ -163,11 +188,11 @@ def apply_isotonic(p: np.ndarray, calib: dict | None) -> np.ndarray:
     return np.interp(p, calib["x"], calib["y"])
 
 
-def finish(p: np.ndarray, game) -> np.ndarray:
-    """Clip to [EPS, 1 - EPS] inside the halves, NaN outside."""
+def finish(p: np.ndarray, game, fill: float = 0.5) -> np.ndarray:
+    """Clip to [EPS, 1 - EPS] inside the halves (NaN there -> fill), NaN outside."""
     out = np.full(int(game["meta"]["n_frames"]), np.nan)
     for half in halves(game):
-        out[half] = np.clip(np.nan_to_num(p[half], nan=0.5), POSSESSION.EPS, 1 - POSSESSION.EPS)
+        out[half] = np.clip(np.nan_to_num(p[half], nan=fill), POSSESSION.EPS, 1 - POSSESSION.EPS)
     return out
 
 
@@ -222,27 +247,58 @@ def load_rows() -> list[dict]:
     return rows
 
 
-def lomo(rows: list[dict], t0: float) -> dict:
-    """Out-of-fold calibrated p_home per game: model and isotonic map both fitted without its match."""
+def lomo(rows: list[dict], t0: float, target: str = "home") -> dict:
+    """Out-of-fold calibrated p_home (or p_turn) per game: model and isotonic map both fitted
+    without its match."""
     raw = {}
     for f in sorted({r["fold"] for r in rows}):
-        booster = fit([r for r in rows if r["fold"] != f])
+        booster = fit([r for r in rows if r["fold"] != f], target)
         for r in rows:
             if r["fold"] == f:
-                raw[r["name"]] = predict_raw(booster, r["X"], r["Xm"])
-        print(f"  fold {f} done ({time.time() - t0:.0f} s)")
+                raw[r["name"]] = predict_raw(booster, r["X"], r["Xm"], target)
+        print(f"  {target} fold {f} done ({time.time() - t0:.0f} s)")
     out = {}
+    fill = 0.0 if target == "turn" else 0.5
     for r in rows:
-        calib = (fit_isotonic(*oof_xy(raw, [o for o in rows if o["fold"] != r["fold"]]))
+        calib = (fit_isotonic(*oof_xy(raw, [o for o in rows if o["fold"] != r["fold"]], target))
                  if POSSESSION.CALIBRATE else None)
-        out[r["name"]] = finish(apply_isotonic(raw[r["name"]], calib), r["game"])
+        out[r["name"]] = finish(apply_isotonic(raw[r["name"]], calib), r["game"], fill)
     return {"p": out, "raw": raw}
 
 
-def oof_xy(raw: dict, rows: list[dict]) -> tuple[np.ndarray, np.ndarray]:
+def oof_xy(raw: dict, rows: list[dict], target: str = "home") -> tuple[np.ndarray, np.ndarray]:
     p = np.concatenate([raw[r["name"]][r["train"]] for r in rows])
-    y = np.concatenate([(r["labels"][r["train"]] == "H") for r in rows]).astype(np.float64)
+    y = np.concatenate([_target(r, target) for r in rows]).astype(np.float64)
     return p, y
+
+
+def auc(p: np.ndarray, y: np.ndarray) -> float:
+    """Area under the ROC curve (rank formula, ties averaged)."""
+    from scipy.stats import rankdata
+    y = y.astype(bool)
+    n1, n0 = int(y.sum()), int((~y).sum())
+    if not n1 or not n0:
+        return float("nan")
+    return float((rankdata(p)[y].sum() - n1 * (n1 + 1) / 2) / (n1 * n0))
+
+
+def train_turn(rows: list[dict], t0: float) -> dict:
+    """p_turn: out of fold for every suite copy (written next to p_home), then the final model."""
+    res = lomo(rows, t0, "turn")
+    stats = []
+    for r in rows:
+        p = res["p"][r["name"]]
+        m = r["alive"]
+        stats.append(auc(p[m], r["y_turn"][m]))
+        save_npy(config.game_cache(r["name"]) / "p_turn.npy", p)
+    booster = fit(rows, "turn")
+    booster.save_model(str(TURN_MODEL_PATH))
+    calib = fit_isotonic(*oof_xy(res["raw"], rows, "turn")) if POSSESSION.CALIBRATE else None
+    TURN_CALIB_PATH.write_text(json.dumps(calib))
+    out = {"auc_mean": float(np.mean(stats)),
+           "positive_share": float(np.mean(np.concatenate([r["y_turn"][r["alive"]] for r in rows])))}
+    print(f"  p_turn out of fold: AUC {out['auc_mean']:.4f} (alive frames, positives {out['positive_share']:.1%})")
+    return out
 
 
 def without(rows: list[dict], group: str) -> list[dict]:
@@ -320,8 +376,10 @@ def train(log_change: str | None = None) -> dict:
     booster.save_model(str(MODEL_PATH))
     calib = fit_isotonic(*oof_xy(raw, rows)) if POSSESSION.CALIBRATE else None
     CALIB_PATH.write_text(json.dumps(calib))
-    write_meta(report["settings"])
     imp = booster.feature_importance(importance_type="gain")
+    if POSSESSION.TURN_MODEL:
+        report["turn"] = train_turn(rows, t0)
+    write_meta(report["settings"])
     report["importance"] = dict(sorted(zip(rows[0]["names"], imp.tolist()), key=lambda kv: -kv[1]))
     report["summary"] = summarise(report["games"])
     report["seconds"] = round(time.time() - t0, 1)
@@ -339,6 +397,8 @@ def write_meta(settings: dict) -> None:
             "games": [g for g, _ in suite_games()],
             "model_sha256": hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest(),
             "calibration_sha256": hashlib.sha256(CALIB_PATH.read_bytes()).hexdigest(),
+            "turn_model_sha256": (hashlib.sha256(TURN_MODEL_PATH.read_bytes()).hexdigest()
+                                  if TURN_MODEL_PATH.is_file() else None),
             "settings": settings}
     META_PATH.write_text(json.dumps(meta, indent=1, sort_keys=True, default=float) + "\n")
     if manifest.get("target_provisional") or not manifest.get("sim_params_fitted"):
@@ -395,6 +455,12 @@ def predict(name: str, v0: bool = False) -> dict:
         calib = json.loads(CALIB_PATH.read_text()) if POSSESSION.CALIBRATE else None
         p = finish(apply_isotonic(predict_raw(booster, X, Xm), calib), game)
         how = "LightGBM " + hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest()[:12]
+        if POSSESSION.TURN_MODEL and TURN_MODEL_PATH.is_file():       # p4-finetuning
+            tb = lgb.Booster(model_file=str(TURN_MODEL_PATH))
+            tc = json.loads(TURN_CALIB_PATH.read_text()) if POSSESSION.CALIBRATE else None
+            pt = finish(apply_isotonic(predict_raw(tb, X, Xm, "turn"), tc), game, fill=0.0)
+            save_npy(config.game_cache(name) / "p_turn.npy", pt)
+            how += ", p_turn " + hashlib.sha256(TURN_MODEL_PATH.read_bytes()).hexdigest()[:12]
     sha = save_npy(config.game_cache(name) / "p_home.npy", p)
     inside = np.isfinite(p)
     return {"how": how, "graded": int(inside.sum()), "share_h": float((p[inside] > 0.5).mean()),

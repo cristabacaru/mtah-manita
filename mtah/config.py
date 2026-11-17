@@ -213,8 +213,11 @@ class POSSESSION:
     """p_home[t] = P(H in possession | ball alive). Files: ball.py, features.py, model.py."""
     # -- ball.py: gap bridging (constant-velocity Kalman + RTS smoother, per half) ---------------
     BRIDGE_MAX_S = 4.0        # fill a ball gap only if it is at most this long and seen at both ends
-    KF_ACC_STD = 8.0          # m/s^2, white-acceleration process noise (kicks are absorbed by it)
-    KF_MEAS_STD = 0.5         # m, ball position measurement noise
+    # p4-finetuning, screened LOMO oracle-D (2026-11-17): 0.5 m / 8 -> 0.6424, 0.1 / 20 -> 0.7002,
+    # 0.03 / 40 -> 0.7018, 0.01 / 60 -> 0.6875, 0.03 / 80 -> 0.6913. The old values smoothed kicks away
+    # (P2 measured the real ball jitter at ~0.006 m second difference).
+    KF_ACC_STD = 40.0         # m/s^2, white-acceleration process noise [main 8.0]
+    KF_MEAS_STD = 0.03        # m, ball position measurement noise [main 0.5]
     # -- features.py ------------------------------------------------------------------------------
     VEL_HALF_WINDOW_S = 0.2   # player velocity vectors: same centred difference as players_speed
     NEAR_RADII_M = (2.0, 5.0)  # players of each team within these distances of the ball
@@ -232,6 +235,10 @@ class POSSESSION:
     TURNOVER_WEIGHT = 3.0       # ... get this weight
     SHORT_SPELL_S = 3.0         # frames inside GT possessions shorter than this ...
     SHORT_SPELL_WEIGHT = 3.0    # ... get this weight (the larger of the two applies)
+    # turnover model p_turn (p4-finetuning): P(direct H <-> A change within TURN_WINDOW_S of t), same
+    # features and LOMO as p_home; the decoder makes H <-> A switches cheaper where it is high
+    TURN_MODEL = True
+    TURN_WINDOW_S = 0.5
     SHAPE_VEL_S = 1.0         # team centroid velocity: centred difference over +/- this
     # -- model.py ---------------------------------------------------------------------------------
     V0_CONF = 0.8             # v0 rule: p_home = V0_CONF when the last control was H, 1 - V0_CONF if A
@@ -269,6 +276,10 @@ class DECODER:
     MIN_DEAD_S = 1.333          # [main 0.968]
     ANCHOR_BONUS = 9.190        # [main 8.534]
     TAG_BONUS = 4.0             # not tuned: external games have no Smart Tagging
+    # p4-finetuning (2026-11-17): only HOME_SCALE and TURN_BONUS tuned (Optuna TPE seed 0, 40 trials,
+    # other params fixed). Held out by match: 0.5804 -> 0.5816, 0.5734 -> 0.5792; all 27: 0.5773 -> 0.5829
+    HOME_SCALE = 0.121          # p4-finetuning: separate weight of the H-vs-A term; None = EMISSION_SCALE
+    TURN_BONUS = 3.093          # p4-finetuning: H <-> A switch cheaper by TURN_BONUS * p_turn[t]; 0 = off
     SNAP_MIN_CONFIDENCE = 0.6       # excludes low-confidence "unknown" restart anchors
     SHORT_LIVE_SPELL_S = 0.6        # merge only same-team-bracketed H/A flickers
 

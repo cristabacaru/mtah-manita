@@ -182,6 +182,17 @@ def test_frame_weights():
     assert w[230] == 1 and w[400] == 1                                 # D -> A is not a direct turnover
 
 
+def test_turn_target_and_auc():
+    lab = np.array(["H"] * 100 + ["A"] * 100 + ["D"] * 50 + ["H"] * 100)
+    y = model.turn_target(lab, 25)
+    k = round(POSSESSION.TURN_WINDOW_S * 25)
+    assert y[100 - k:100 + k].all() and y.sum() == 2 * k          # only the direct H -> A change
+    rng = np.random.default_rng(0)
+    yy = rng.uniform(size=2000) < 0.3
+    assert model.auc(yy.astype(float), yy) == 1.0
+    assert abs(model.auc(rng.uniform(size=2000), yy) - 0.5) < 0.05
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

@@ -1,5 +1,5 @@
 {
- "calibration_sha256": "07e35e945ceaf6cbb24162a2d47fe715abb1d16d52a15b117a8c58384cdc5d95",
+ "calibration_sha256": "2980d3326fe90c17106662cfab8a54704a1b0cffcddb799ebc6eef27235352a8",
  "games": [
   "dfl_J03WMX__light",
   "dfl_J03WMX__target",
@@ -29,7 +29,7 @@
   "metrica2_events__target",
   "metrica2_events__heavy"
  ],
- "model_sha256": "e4f9c1864251c44619ac516bdfcb1b4dec2bed1d4433f9146f6af2bdce8a008b",
+ "model_sha256": "319be6f11b37777e82fd3db2cc2fc0f4d266ac745324d21d35c3ed17e3c2ae7a",
  "settings": {
   "BRIDGE_MAX_S": 4.0,
   "CALIBRATE": true,
@@ -42,8 +42,8 @@
   "CONTROL_MARGIN_M": 1.0,
   "CONTROL_REL_SPEED": 3.0,
   "EPS": 0.001,
-  "KF_ACC_STD": 8.0,
-  "KF_MEAS_STD": 0.5,
+  "KF_ACC_STD": 40.0,
+  "KF_MEAS_STD": 0.03,
   "LGBM": {
    "bagging_fraction": 0.8,
    "bagging_freq": 1,
@@ -76,6 +76,8 @@
   "TTA": true,
   "TURNOVER_WEIGHT": 3.0,
   "TURNOVER_WINDOW_S": 1.0,
+  "TURN_MODEL": true,
+  "TURN_WINDOW_S": 0.5,
   "V0_CONF": 0.8,
   "VEL_HALF_WINDOW_S": 0.2
  },
@@ -83,5 +85,6 @@
   "sim_params_fitted": true,
   "target_hash": "4a1dc772c339",
   "target_provisional": false
- }
+ },
+ "turn_model_sha256": "677111d88752e8dfe55dddd82315d67802fec273d1207a8fea0de8d7cf55e32e"
 }
